@@ -8,8 +8,6 @@ Contains:
 from __future__ import annotations
 
 import re
-import time
-from typing import Optional
 
 from strategies.whale_tracker_new import WhaleSignal
 from strategies.wf_constants import (
@@ -67,7 +65,7 @@ def llm_score_signal(
             score = int(nums[0]) if nums else 5
             return max(1, min(10, score))
     except Exception as e:
-        log.warning(f"LLM score failed: {e}")
+        log.warning("LLM score failed", extra={"error": str(e)})
         return 5
 
 
@@ -103,8 +101,7 @@ def log_paper_exit_conditions(
 
     # Check whitelist status for sports exit signals
     is_whitelisted = any(
-        re.search(p, market_title, re.IGNORECASE)
-        for p in SPORTS_WHITELIST_PATTERNS
+        re.search(p, market_title, re.IGNORECASE) for p in SPORTS_WHITELIST_PATTERNS
     )
 
     # Check blacklist status
@@ -117,41 +114,53 @@ def log_paper_exit_conditions(
     if hours_until_event is not None and hours_until_event > 0:
         exit_in_hours = max(0, hours_until_event - SPORTS_EXIT_HOURS_BEFORE_EVENT)
         log.info(
-            f"SPORTS_PAPER_EXIT | {market_title}"
-            f" | whale={whale_name}"
-            f"{blacklist_note}"
-            f"{whitelist_note}"
-            f" | entry=${entry_price:.3f}"
-            f" | event_in={hours_until_event:.2f}h"
-            f" | exit_in={exit_in_hours:.2f}h"
-            f" | auto_exit=-${SPORTS_AUTO_EXIT_LOSS}"
-            f" | daily_limit=-${SPORTS_DAILY_LOSS_LIMIT}"
-            f" | sport={sport_type}"
+            "SPORTS_PAPER_EXIT",
+            extra={
+                "market_title": market_title,
+                "whale": whale_name,
+                "blacklist_note": blacklist_note,
+                "whitelist_note": whitelist_note,
+                "entry_price": entry_price,
+                "hours_until_event": hours_until_event,
+                "exit_in_hours": exit_in_hours,
+                "auto_exit_loss": SPORTS_AUTO_EXIT_LOSS,
+                "daily_loss_limit": SPORTS_DAILY_LOSS_LIMIT,
+                "sport": sport_type,
+            },
         )
     else:
         log.info(
-            f"SPORTS_PAPER_EXIT | {market_title}"
-            f" | whale={whale_name}"
-            f"{blacklist_note}"
-            f"{whitelist_note}"
-            f" | entry=${entry_price:.3f}"
-            f" | event_time=N/A (no timing data)"
-            f" | auto_exit=-${SPORTS_AUTO_EXIT_LOSS}"
-            f" | daily_limit=-${SPORTS_DAILY_LOSS_LIMIT}"
-            f" | sport={sport_type}"
+            "SPORTS_PAPER_EXIT",
+            extra={
+                "market_title": market_title,
+                "whale": whale_name,
+                "blacklist_note": blacklist_note,
+                "whitelist_note": whitelist_note,
+                "entry_price": entry_price,
+                "event_time": "N/A (no timing data)",
+                "auto_exit_loss": SPORTS_AUTO_EXIT_LOSS,
+                "daily_loss_limit": SPORTS_DAILY_LOSS_LIMIT,
+                "sport": sport_type,
+            },
         )
 
     # Log blacklist divergence warning if whale is blacklisted but we did not reject
     if on_blacklist:
         log.warning(
-            f"SPORTS_EXIT_DIVERGENCE: {whale_name} is sports-blacklisted but "
-            f"signal passed the blacklist check above (post-check divergence). "
-            f"Verify that SPORTS_WHALE_BLACKLIST contains the latest blacklisted whales."
+            "SPORTS_EXIT_DIVERGENCE",
+            extra={
+                "whale": whale_name,
+                "note": "signal passed the blacklist check above (post-check divergence). Verify that SPORTS_WHALE_BLACKLIST contains the latest blacklisted whales.",
+            },
         )
 
     # Register entry price for paper exit divergence tracking
     if instrument_id_str:
         log.info(
-            f"PAPER_ENTRY: sports | inst={instrument_id_str[:30]} | "
-            f"price={entry_price:.3f} | whale={whale_name}"
+            "PAPER_ENTRY: sports",
+            extra={
+                "instrument_id": instrument_id_str[:30],
+                "price": entry_price,
+                "whale": whale_name,
+            },
         )

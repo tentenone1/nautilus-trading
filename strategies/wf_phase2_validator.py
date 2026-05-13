@@ -58,24 +58,38 @@ def validate_phase2_signal(
     # First check BLOCKED_CATEGORIES (hard rejection)
     if category_lower in BLOCKED_CATEGORIES:
         log.info(
-            f"P2_BLOCK | category={category_lower} | whale={whale_name} | "
-            f"market={market_title}"
+            "P2_BLOCK",
+            extra={
+                "category": category_lower,
+                "whale": whale_name,
+                "market": market_title,
+            },
         )
         return False
 
     # Then check ALLOWED_CATEGORIES (must be in whitelist)
     if category_lower not in ALLOWED_CATEGORIES:
         log.info(
-            f"P2_BLOCK | category={category_lower} (not whitelisted) | "
-            f"whale={whale_name} | market={market_title}"
+            "P2_BLOCK",
+            extra={
+                "category": category_lower,
+                "reason": "not whitelisted",
+                "whale": whale_name,
+                "market": market_title,
+            },
         )
         return False
 
     # ── Whale Type Whitelist Check ──────────────────────────────────────
     if not whale_classification:
         log.info(
-            f"P2_PASS | category={category_lower} | whale_type=none | "
-            f"whale={whale_name} | market={market_title}"
+            "P2_PASS",
+            extra={
+                "category": category_lower,
+                "whale_type": "none",
+                "whale": whale_name,
+                "market": market_title,
+            },
         )
         return True
 
@@ -83,20 +97,34 @@ def validate_phase2_signal(
 
     if whale_type in BLOCKED_WHALE_TYPES:
         log.info(
-            f"P2_BLOCK | whale_type={whale_type} | whale={whale_name} | "
-            f"market={market_title}"
+            "P2_BLOCK",
+            extra={
+                "whale_type": whale_type,
+                "whale": whale_name,
+                "market": market_title,
+            },
         )
         return False
 
     if whale_type not in ALLOWED_WHALE_TYPES:
         log.info(
-            f"P2_BLOCK | whale_type={whale_type} (not whitelisted) | "
-            f"whale={whale_name} | market={market_title}"
+            "P2_BLOCK",
+            extra={
+                "whale_type": whale_type,
+                "reason": "not whitelisted",
+                "whale": whale_name,
+                "market": market_title,
+            },
         )
         return False
 
     log.info(
-        f"P2_PASS | category={category_lower} | whale_type={whale_type} | "
-        f"whale={whale_name} | market={market_title}"
+        "P2_PASS",
+        extra={
+            "category": category_lower,
+            "whale_type": whale_type,
+            "whale": whale_name,
+            "market": market_title,
+        },
     )
     return True
