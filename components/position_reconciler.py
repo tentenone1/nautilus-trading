@@ -13,14 +13,12 @@ Usage:
     from components.position_reconciler import PositionReconciler
     reconciler = PositionReconciler()
     reconciler.reconcile_all()  # one-shot
-    reconciler.start_periodic(interval_secs=300)  # periodic
 """
 
 import json
 import logging
 import os
 import sqlite3
-import threading
 import time
 import urllib.request
 from dataclasses import dataclass, field
@@ -118,12 +116,11 @@ class PositionReconciler:
         )
         report = reconciler.reconcile_all()
 
-        # Or start periodic reconciliation:
-        reconciler.start_periodic(interval_secs=300)
     """
 
-    # Price tolerance: allow up to 20% deviation (Polymarket prices are volatile)
-    PRICE_TOLERANCE_PCT = 20.0
+    # Price tolerance: allow up to 10% deviation on Polymarket prices.
+    # Polymarket odds range 0.01–0.99, so 10% of 0.50 = ±0.05 (tight but safe for paper).
+    PRICE_TOLERANCE_PCT = 10.0
     # Size sanity: paper position should not exceed this % of total live size
     SIZE_SANITY_MAX_PCT = 50.0
 
@@ -145,7 +142,6 @@ class PositionReconciler:
         self._trades_db_path = trades_db_path
         self._data_api_url = data_api_url
         self._cron_output_path = cron_output_path
-        self._periodic_timer: threading.Timer | None = None
         self._last_report: ReconciliationReport | None = None
         self._whale_addresses: list[str] = []
 
@@ -181,27 +177,6 @@ class PositionReconciler:
         self._log_report(report, elapsed)
 
         return report
-
-    def start_periodic(self, interval_secs: float = 300.0) -> None:
-        """Start periodic reconciliation on a background timer."""
-        if self._periodic_timer and self._periodic_timer.is_alive():
-            logger.warning("Periodic reconciliation already running")
-            return
-
-        self._interval_secs = interval_secs
-        self._periodic_timer = threading.Timer(interval_secs, self._periodic_loop)
-        self._periodic_timer.daemon = True
-        self._periodic_timer.start()
-        logger.info(
-            f"Periodic reconciliation started: every {interval_secs:.0f}s"
-        )
-
-    def stop_periodic(self) -> None:
-        """Stop periodic reconciliation."""
-        if self._periodic_timer:
-            self._periodic_timer.cancel()
-            self._periodic_timer = None
-            logger.info("Periodic reconciliation stopped")
 
     @property
     def last_report(self) -> ReconciliationReport | None:
@@ -635,22 +610,6 @@ class PositionReconciler:
                 f"{'; '.join(m.issues)}"
             )
 
-    def _periodic_loop(self) -> None:
-        """Background loop for periodic reconciliation."""
-        try:
-            logger.info(f"Periodic reconciliation check...")
-            self.reconcile_all()
-        except Exception as e:
-            logger.error(f"Periodic reconciliation error: {e}")
-        finally:
-            # Reschedule
-            if self._periodic_timer:
-                self._periodic_timer = threading.Timer(
-                    self._interval_secs, self._periodic_loop
-                )
-                self._periodic_timer.daemon = True
-                self._periodic_timer.start()
-
     # ── Quick-lookup API ──────────────────────────────────────────────
 
     def check_position_alignment(
@@ -744,14 +703,15 @@ def main():
 
     report = reconciler.reconcile_all()
 
+    # For periodic reconciliation in standalone CLI, use a simple while loop.
+    # In run_paper.py, this is handled via strategy.clock.set_timer().
     if args.interval > 0:
-        print(f"\nStarting periodic reconciliation (every {args.interval:.0f}s)...")
-        reconciler.start_periodic(interval_secs=args.interval)
+        print(f"\nPeriodic reconciliation (every {args.interval:.0f}s)...")
         try:
             while True:
-                time.sleep(1)
+                time.sleep(args.interval)
+                reconciler.reconcile_all()
         except KeyboardInterrupt:
-            reconciler.stop_periodic()
             print("\nPeriodic reconciliation stopped.")
 
     return 0 if report.ok else 1

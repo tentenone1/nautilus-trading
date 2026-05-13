@@ -48,6 +48,7 @@ def _sigabrt_handler(signum, frame):
 
 # ── PID file lock — prevent duplicate processes (systemd User= double-fork workaround) ──
 import atexit
+from datetime import timedelta
 PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".run_paper.pid")
 
 def _check_pid_lock():
@@ -115,7 +116,7 @@ from strategies.whale_follower import WhaleFollower, WhaleFollowerConfig
 
 from components.position_reconciler import PositionReconciler
 
-from strategies.wf_circuit_breaker import get_whale_api_breaker, get_clob_breaker, CircuitBreakerOpen
+from strategies.wf_circuit_breakers import get_whale_api_breaker, get_clob_breaker, CircuitBreakerOpen
 
 # ── Load top whale markets from CURRENT whale positions (Polymarket data API) ──
 def load_whale_markets_from_api(limit: int = 20) -> list[dict]:
@@ -563,6 +564,22 @@ class HealthHandler(BaseHTTPRequestHandler):
                 self._json_response(_check_readiness())
             elif self.path == "/health/ws":
                 self._json_response({"ws_connected": _WS_CONNECTED["value"]})
+            elif self.path == "/health/flatten":
+                # Emergency flatten: close ALL open positions immediately
+                if strategy is None:
+                    self._json_response({"status": "error", "message": "Strategy not loaded"}, status=503)
+                elif not hasattr(strategy, "flatten_all_positions"):
+                    self._json_response({"status": "error", "message": "flatten_all_positions not available"}, status=501)
+                else:
+                    try:
+                        flattened = strategy.flatten_all_positions()
+                        self._json_response({
+                            "status": "ok",
+                            "flattened_count": flattened,
+                            "message": f"Emergency flatten completed: {flattened} positions closed"
+                        })
+                    except Exception as e:
+                        self._json_response({"status": "error", "message": str(e)}, status=500)
             elif self.path == "/health":
                 self._json_response(_full_health_check())
             else:
@@ -622,9 +639,16 @@ if __name__ == "__main__":
         for m in report.mismatches[:5]:
             for issue in m.issues:
                 print(f"       {issue}")
-    # Start periodic reconciliation (every 5 minutes)
-    reconciler.start_periodic(interval_secs=300.0)
-    print("  Periodic reconciliation started: every 300s")
+    # Start periodic reconciliation via strategy clock (tied to actor lifecycle)
+    def _on_recon_timer(event):
+        reconciler.reconcile_all()
+
+    strategy.clock.set_timer(
+        name="position_reconciliation",
+        interval=timedelta(seconds=300.0),
+        callback=_on_recon_timer,
+    )
+    print("  Periodic reconciliation started: every 300s (via strategy clock)")
     print()
 
     # ── Health check server ──────────────────────────────────────────────
@@ -661,5 +685,5 @@ if __name__ == "__main__":
         node.run()
     finally:
         _ws_watchdog_running = False
-        reconciler.stop_periodic()
+        strategy.clock.cancel_timer("position_reconciliation")
         node.dispose()
