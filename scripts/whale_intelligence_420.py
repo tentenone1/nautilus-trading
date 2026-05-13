@@ -218,7 +218,7 @@ def store_results(conn: sqlite3.Connection, results: list[dict], batch_id: int):
 
 def main():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🐋 Whale Intelligence Pipeline Starting", flush=True)
-    print(f"  LLM: {LLM_MODEL} @ 5900x | Batch size: {BATCH_SIZE}", flush=True)
+    print(f"  LLM: {LLM_MODEL} @ 1700 | Batch size: {BATCH_SIZE}", flush=True)
     print(f"  Output: {OUTPUT_PATH}", flush=True)
 
     conn = get_db()

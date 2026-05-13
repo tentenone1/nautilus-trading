@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 DB_PATH = "pipeline/data/whale_discovery.db"
 PROFILES_PATH = "research/whale_profiles.json"
 LLM_URL = "http://127.0.0.1:8080/v1/chat/completions"
-LLM_MODEL = "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
+LLM_MODEL = "Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-IQ2_M"
 BATCH_SIZE = 5  # processed per run
 LLM_TIMEOUT = 120
 

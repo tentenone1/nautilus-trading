@@ -26,7 +26,6 @@ from strategies.wf_kelly import kelly_size, adjust_size_for_liquidity
 from strategies.wf_position_checks import (
     check_position_limits,
     trigger_kill_switch,
-    get_current_total_exposure,
 )
 
 

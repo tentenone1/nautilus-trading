@@ -1,7 +1,42 @@
 [
   {
-    "content": "Create components/bitable_writer.py with Feishu Bitable writing functions",
-    "activeForm": "Creating bitable_writer.py module",
+    "content": "Create wf_state.py module (position state, idempotency, recovery)",
+    "activeForm": "Creating wf_state.py module",
+    "status": "completed"
+  },
+  {
+    "content": "Create wf_exit_engine.py module (exit timer, stop-loss, take-profit)",
+    "activeForm": "Creating wf_exit_engine.py module",
+    "status": "completed"
+  },
+  {
+    "content": "Create wf_risk.py module (kill switch, daily loss, position limits)",
+    "activeForm": "Creating wf_risk.py module",
+    "status": "completed"
+  },
+  {
+    "content": "Create wf_signal_router.py module (fade/follow, signal routing)",
+    "activeForm": "Creating wf_signal_router.py module",
     "status": "in_progress"
+  },
+  {
+    "content": "Create wf_order_mgmt.py module (order submission, entry, exit)",
+    "activeForm": "Creating wf_order_mgmt.py module",
+    "status": "pending"
+  },
+  {
+    "content": "Create wf_pnl.py module (P&L tracking, daily/sports P&L)",
+    "activeForm": "Creating wf_pnl.py module",
+    "status": "pending"
+  },
+  {
+    "content": "Update whale_follower.py to be thin facade with delegation stubs",
+    "activeForm": "Updating whale_follower.py facade",
+    "status": "pending"
+  },
+  {
+    "content": "Verify import works: python -c \"from strategies.whale_follower import WhaleFollower\"",
+    "activeForm": "Verifying import success",
+    "status": "pending"
   }
 ]

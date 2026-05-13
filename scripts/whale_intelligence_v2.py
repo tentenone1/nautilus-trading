@@ -275,7 +275,7 @@ def heuristic_skip(wallet):
 def main():
     start_time = time.time()
     print(f"[{datetime.now(timezone.utc).isoformat()}] 🐋 Whale Intelligence Pipeline v2 Starting", flush=True)
-    print(f"  Model: {LLM_MODEL} @ 5900x", flush=True)
+    print(f"  Model: {LLM_MODEL} @ 1700", flush=True)
     print(f"  Output: {OUTPUT_PATH}", flush=True)
     sys.stdout.flush()
 

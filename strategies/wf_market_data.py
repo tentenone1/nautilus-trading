@@ -9,7 +9,7 @@ from __future__ import annotations
 import requests
 from datetime import datetime, timezone
 
-from strategies.wf_constants import MAX_SANE_RETURN, RESOLUTION_EXIT_HOURS
+from strategies.wf_constants import RESOLUTION_EXIT_HOURS
 
 
 def fetch_real_midpoint(condition_id: str) -> float | None:

@@ -17,6 +17,8 @@ import uuid
 import threading
 import urllib.request
 from urllib.error import URLError
+import time
+import functools
 
 from nautilus_trader.model.identifiers import TradeId, VenueOrderId
 from nautilus_trader.model.objects import Price, Money
@@ -26,6 +28,24 @@ from nautilus_trader.model.enums import LiquiditySide
 PAPER_FILL_PRICE_CACHE: dict[str, float] = {}
 POLYMARKET_MIDPOINT_URL = "https://clob.polymarket.com/midpoint?token_id={token_id}"
 _lock = threading.Lock()
+
+# 30‑second TTL cache for Polymarket midpoint prices
+_POLY_PRICE_CACHE: dict[str, tuple[float, float]] = {}
+_POLY_CACHE_TTL = 30.0  # seconds
+
+def _poly_price_cache_get(token_id: str) -> float | None:
+    entry = _POLY_PRICE_CACHE.get(token_id)
+    if entry is None:
+        return None
+    price, ts = entry
+    if time.time() - ts < _POLY_CACHE_TTL:
+        return price
+    # Expired – remove
+    del _POLY_PRICE_CACHE[token_id]
+    return None
+
+def _poly_price_cache_set(token_id: str, price: float) -> None:
+    _POLY_PRICE_CACHE[token_id] = (price, time.time())
 
 
 def set_fill_price(instrument_id_str: str, price: float) -> None:
@@ -105,19 +125,25 @@ class PaperExecClient:
             except Exception:
                 pass
 
-        # 4. Polymarket API midpoint
+        # 4. Polymarket API midpoint with 30‑second TTL cache
         if fill_price is None:
             try:
                 parts = inst_key.split("-")
                 if len(parts) >= 2:
                     token_id = parts[-1].split(".")[0]
-                    url = POLYMARKET_MIDPOINT_URL.format(token_id=token_id)
-                    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        data = json.loads(resp.read().decode())
-                    price_str = data.get("midpoint") or data.get("price")
-                    if price_str is not None:
-                        fill_price = float(price_str)
+                    # Use cached price if fresh
+                    cached = _poly_price_cache_get(token_id)
+                    if cached is not None:
+                        fill_price = cached
+                    else:
+                        url = POLYMARKET_MIDPOINT_URL.format(token_id=token_id)
+                        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+                        with urllib.request.urlopen(req, timeout=5) as resp:
+                            data = json.loads(resp.read().decode())
+                        price_str = data.get("midpoint") or data.get("price")
+                        if price_str is not None:
+                            fill_price = float(price_str)
+                            _poly_price_cache_set(token_id, fill_price)
             except Exception:
                 pass
 

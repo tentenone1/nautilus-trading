@@ -13,14 +13,9 @@ from pathlib import Path
 
 from nautilus_trader.model.identifiers import InstrumentId
 
-from datetime import datetime, timezone
 
 from strategies.wf_constants import MAX_SANE_RETURN
 from strategies.wf_sports import is_sports_market
-from strategies.wf_market_data import (
-    resolve_exit_price,
-    should_exit_for_resolution,
-)
 
 
 def _is_market_resolved(
@@ -219,7 +214,6 @@ def exit_position(
     # Mark as exited
     exited_positions.add(inst_key)
 
-    pnl_sign = "+" if realized_pnl >= 0 else ""
     log.info("trade_exited", extra={
         "component": "wf_exits",
         "event": "trade_exited",

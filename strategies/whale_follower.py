@@ -109,6 +109,15 @@ from strategies.wf_position_checks import (
     get_current_total_exposure,
     get_market_exposure,
 )
+# New sub-modules (delegation targets)
+from strategies.wf_order_mgmt import (
+    exit_position as _module_exit_position,
+    flatten_all_positions as _module_flatten,
+    cancel_all_open_orders as _module_cancel_all,
+    exit_all_positions as _module_exit_all,
+)
+from strategies.wf_exit_engine import check_all_positions as _module_check_all
+from strategies.wf_risk import check_daily_loss_limit as _module_check_daily_loss
 
 from py_clob_client.client import ClobClient
 from py_clob_client.constants import POLYGON
@@ -322,6 +331,7 @@ class WhaleFollower(Strategy):
         self._last_resolution_check: dict[str, float] = {}  # inst_id -> timestamp (rate-limit API calls)
         self._open_positions: dict[str, dict] = {}  # str(inst_id) -> {whale_name, market_title, category, side, entry_price, size, entry_time, trade_id, condition_id}
         self._exited_positions: set[str] = set()  # Track exited instrument IDs to prevent duplicate exits
+        self._filled_orders: set[str] = set()  # Track filled client_order_ids for idempotency
         self._whale_tiering: WhaleTiering | None = None
         self._whale_intel: WhaleIntelligence | None = None
         # Fade tracking
@@ -588,8 +598,19 @@ class WhaleFollower(Strategy):
             self._last_trade_flush = now
 
     def on_order_filled(self, event: OrderFilled) -> None:
-        """Log filled orders to the trades database."""
+        """Log filled orders to the trades database (idempotent via client_order_id dedup)."""
         conn = None
+        # ── Idempotency: skip if this order was already processed ──
+        order_key = str(event.client_order_id)
+        if order_key in self._filled_orders:
+            self.log.debug(f"[FILL] Already processed order {order_key[:30]}, skipping duplicate")
+            return
+        self._filled_orders.add(order_key)
+        # Prune set if too large (memory guard)
+        if len(self._filled_orders) > 10000:
+            # Discard oldest half
+            self._filled_orders = set(list(self._filled_orders)[-5000:])
+
         try:
             import sqlite3
             from pathlib import Path
@@ -1030,7 +1051,7 @@ class WhaleFollower(Strategy):
         import urllib.request
         import urllib.error
         import re
-        from strategies.wf_circuit_breaker import get_whale_api_breaker, CircuitBreakerOpen
+        from strategies.wf_circuit_breakers import get_whale_api_breaker, CircuitBreakerOpen
         market = getattr(signal, "market_title", "") or ""
         whale = signal.whale_name or "unknown"
         side = getattr(signal, "side", "?") or "?"
@@ -1860,28 +1881,41 @@ class WhaleFollower(Strategy):
             f"{inst_key[:40]}..."
         )
 
-    def exit_all_positions(self) -> None:
-        """Close ALL open positions (emergency stop or daily loss limit)."""
-        for inst_id in self.config.instrument_ids:
-            open_positions = self.cache.positions_open(instrument_id=inst_id)
-            if open_positions and open_positions[0].quantity.as_double() != 0:
-                self.exit_position(inst_id, exit_reason="emergency_exit_all")
+    def flatten_all_positions(self) -> int:
+        """Emergency flatten (delegation stub)."""
+        return _module_flatten(
+            strategy=self,
+            config=self.config,
+            cache=self._cache,
+            log=self.log,
+            open_positions=self._open_positions,
+            exited_positions=self._exited_positions,
+            last_exit_time=self._last_exit_time,
+            resolve_exit_price_func=lambda pos_info: self._resolve_exit_price_impl(pos_info),
+            daily_pnl=self._daily_pnl,
+            sports_daily_pnl=self._sports_daily_pnl,
+            kill_switch_func=None,
+        )
 
     def cancel_all_open_orders(self) -> None:
-        """Cancel ALL pending open orders (kill switch).
+        """Cancel all pending orders (delegation stub)."""
+        _module_cancel_all(strategy=self, cache=self._cache, log=self.log)
 
-        Phase 1 risk control: when position limits are breached,
-        cancel all pending orders to stop trading immediately.
-        """
-        canceled_count = 0
-        for order in self.cache.orders_open():
-            try:
-                self.cancel_order(order)
-                canceled_count += 1
-                self.log.info(f"Canceled order {order.client_order_id}")
-            except Exception as e:
-                self.log.error(f"Failed to cancel order {order.client_order_id}: {e}")
-        self.log.info(f"KILL_SWITCH: canceled {canceled_count} open orders")
+    def exit_all_positions(self) -> None:
+        """Close all pre-subscribed positions (delegation stub)."""
+        _module_exit_all(
+            strategy=self,
+            config=self.config,
+            cache=self._cache,
+            log=self.log,
+            open_positions=self._open_positions,
+            exited_positions=self._exited_positions,
+            last_exit_time=self._last_exit_time,
+            resolve_exit_price_func=lambda pos_info: self._resolve_exit_price_impl(pos_info),
+            daily_pnl=self._daily_pnl,
+            sports_daily_pnl=self._sports_daily_pnl,
+            kill_switch_func=None,
+        )
 
 
     def _recover_open_positions(self) -> None:
@@ -2573,110 +2607,15 @@ class WhaleFollower(Strategy):
 
     def _is_sports_market(self, instrument_id) -> tuple[bool, str]:
         """Check if an instrument is a sports market. Returns (is_sports, sport_type)."""
-        title = str(instrument_id).lower()
-        sport_types = {
-            "nba": ["nba", "lakers", "celtics", "warriors", "bucks", "thunder", "nuggets", "knicks", "trail blazers", "spurs", "timberwolves"],
-            "nfl": ["nfl", "eagles", "49ers", "chiefs", "patriots", "cowboys", "commanders"],
-            "nhl": ["nhl", "penguins", "stars", "wild", "hurricanes", "golden knights", "avalanche", "oilers", "canucks"],
-            "mlb": ["mlb", "yankees", "dodgers", "red sox"],
-            "soccer": ["soccer", "champions league", "premier league", "world cup"],
-            "ncaa": ["ncaa", "college football", "college basketball", "march madness", "final four"],
-        }
-        
-        for sport_type, keywords in sport_types.items():
-            for kw in keywords:
-                if kw in title:
-                    return True, sport_type
-        
-        # General sports check
-        for kw in self._SPORTS_KEYWORDS:
-            if kw in title:
-                return True, "other_sports"
-        
-        return False, ""
+        return is_sports_market(str(instrument_id))
 
     def _get_market_event_time(self, instrument_id) -> dict:
         """Fetch event timing for a market from Polymarket API."""
-        cond_id = str(instrument_id).split("-")[0]
-        try:
-            # Use cached metadata if available
-            metadata_file = Path.home() / "workspace" / "metadata" / "markets_latest.json"
-            if metadata_file.exists():
-                import json
-                with open(metadata_file) as f:
-                    markets = json.load(f)
-                for m in markets:
-                    if m.get("condition_id") == cond_id:
-                        return {
-                            "hours_until_event": m.get("hours_until_event"),
-                            "is_imminent": m.get("is_imminent", False),
-                            "is_in_play": m.get("is_in_play", False),
-                            "is_past": m.get("is_past", False),
-                            "event_date_iso": m.get("end_date_iso"),
-                            "liquidity_tier": m.get("liquidity_tier", "tier3"),
-                            "volume": m.get("volume", 0),
-                            "liquidity": m.get("liquidity", 0),
-                        }
-        except Exception:
-            pass
-        
-        # Fallback: fetch from API
-        try:
-            resp = requests.get(
-                f"https://gamma-api.polymarket.com/markets/{cond_id}",
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                m = resp.json()
-                end_date = m.get("endDateIso", m.get("endDate"))
-                if end_date:
-                    end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-                    hours_left = (end_dt - datetime.now(timezone.utc)).total_seconds() / 3600
-                    return {
-                        "hours_until_event": round(hours_left, 1),
-                        "is_imminent": 0 < hours_left < 6,
-                        "is_in_play": hours_left < 6 and hours_left > 0,
-                        "is_past": hours_left < 0,
-                        "event_date_iso": end_date,
-                        "liquidity_tier": "tier3",
-                        "volume": float(m.get("volumeNum", 0)),
-                        "liquidity": float(m.get("liquidityNum", 0)),
-                    }
-        except Exception:
-            pass
-        
-        return {
-            "hours_until_event": None,
-            "is_imminent": False,
-            "is_in_play": False,
-            "is_past": False,
-            "event_date_iso": None,
-            "liquidity_tier": "tier3",
-            "volume": 0,
-            "liquidity": 0,
-        }
+        return get_market_event_time(str(instrument_id))
 
     def _should_exit_for_sports(self, instrument_id) -> bool:
         """Check if a sports position should be exited (game imminent or in-play)."""
-        is_sports, sport_type = self._is_sports_market(instrument_id)
-        if not is_sports:
-            return False
-        
-        timing = self._get_market_event_time(instrument_id)
-        
-        # Exit if game is within SPORTS_EXIT_HOURS_BEFORE_EVENT hour (prices will freeze during play)
-        if timing["hours_until_event"] is not None and 0 < timing["hours_until_event"] < SPORTS_EXIT_HOURS_BEFORE_EVENT:
-            self.log.info(
-                f"Sports exit: {sport_type} market resolving in {timing['hours_until_event']:.1f}h"
-            )
-            return True
-        
-        # Exit if market is in-play (prices frozen, can't manage risk)
-        if timing["is_in_play"]:
-            self.log.info(f"Sports exit: {sport_type} market is in-play (prices frozen)")
-            return True
-        
-        return False
+        return should_exit_for_sports(str(instrument_id), log_func=self.log.info)
 
     def _adjust_size_for_liquidity(self, size_usd: float, instrument_id) -> float:
         from strategies.wf_kelly import adjust_size_for_liquidity
