@@ -6,6 +6,7 @@ from the trades database. No class coupling — all state is passed as parameter
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 import uuid
@@ -80,6 +81,9 @@ def _ensure_db_schema(conn: sqlite3.Connection) -> None:
         )
     """)
 
+
+    # Non-unique index: same whale can re-enter same market after exiting (different trade_id each time)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_whale_condition ON trades(whale_name, condition_id)")
 
 def migrate_trades_db(db_path: Optional[Path] = None) -> bool:
     """Migrate trades database to add Phase 1 validation columns.
@@ -395,6 +399,40 @@ def recover_open_positions(
         if log_func:
             log_func(f"[RECOVER] Failed to recover open positions: {e}")
         return []
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def get_category_pnl(
+    db_path: Optional[str] = None,
+) -> dict[str, float]:
+    """Load cumulative realized P&L per category from the trades DB.
+
+    Used at startup to initialize ``WhaleFollower._category_pnl`` so that
+    category-level fade decisions are active immediately, not just after
+    the first restart trade.
+
+    Returns:
+        Dict mapping category name -> cumulative realized P&L.
+    """
+    if db_path is None:
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "trades.db")
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT category, SUM(realized_pnl) FROM trades "
+            "WHERE category IS NOT NULL AND category != '' "
+            "GROUP BY category"
+        )
+        return {row[0]: float(row[1]) for row in cur.fetchall()}
+    except Exception:
+        return {}
     finally:
         if conn:
             try:

@@ -268,7 +268,7 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
     # Dynamic Kelly: use whale's actual win rate instead of fixed estimate
     use_dynamic_kelly: bool = True
     # Seen position TTL: re-scan positions older than this (seconds)
-    seen_position_ttl: float = 14400.0  # 4 hours (was 24h — 542 orphan_cleanup_sandbox trades avg'd 35h)
+    seen_position_ttl: float = 3600.0  # 1 hour (was 4h — reduce to allow more frequent re-trades)
     # Max hold time for open positions (hours) — longer than this triggers auto-exit
     max_hold_hours: float = 4.0  # close positions held > 4h (was 24h — 6.2% WR on >1h positions)
 
@@ -1278,7 +1278,7 @@ class WhaleFollower(Strategy):
             signal.condition_id, signal.token_id, signal.outcome
         )
         if target_inst is None:
-            self.log.info(f"Could not get instrument for {signal.market_title[:40]}, skipping")
+            self.log.warning(f"Could not get instrument for {signal.market_title[:40]} | condition_id={signal.condition_id}, skipping")
             return
 
         # Determine side
@@ -2428,6 +2428,37 @@ class WhaleFollower(Strategy):
                     price_rejected += 1
                     self.log.info(f"Sybil price skip: {s.get('market_title', '')[:50]} — {price_reason}")
                     continue
+
+
+                # F3: Filter sybil groups containing blacklisted whales (before signal generation)
+                positions_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "sybil_positions.json")
+                try:
+                    with open(positions_path) as pf:
+                        positions_data = json.load(pf)
+                    group_markets = positions_data.get("groups", {}).get(s.get("group_id", ""), {}).get("markets", [])
+                    for m in group_markets:
+                        if m.get("condition_id") == s.get("condition_id", ""):
+                            wallet_labels = [w.get("label", "") for w in m.get("wallets", [])]
+                            blacklisted = [w for w in wallet_labels if w in WHALE_BLACKLIST]
+                            if blacklisted:
+                                self.log.debug(f"Skipping sybil signal (blacklisted whales in group): {blacklisted} for {s.get("market_title", "")[:50]}")
+                                continue  # Skip this signal
+                            break
+                except Exception:
+                    pass  # If positions file not available, proceed without filtering
+
+                # F4: Filter long-dated markets (end_date > 30 days from now)
+                end_date_str = s.get("end_date", "")
+                if end_date_str:
+                    try:
+                        end_dt = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
+                        days_until = (end_dt - datetime.now(timezone.utc)).total_seconds() / 86400
+                        if days_until > 30:
+                            self.log.debug(f"Skipping long-dated market: {s.get("market_title", "")[:50]} (end_date: {end_date_str})")
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
                 
                 # Map side
                 sybil_side = s.get("side", "BUY YES")

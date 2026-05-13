@@ -208,18 +208,18 @@ def on_signal(
         # Continue processing - don't return, just boost confidence
 
 
-    # REJECT: unknown whale signals with zero edge score (noise trades)
-    if (
-        edge_val == 0.0
-        and (
-            not signal.whale_name
-            or signal.whale_name.lower() in ("", "unknown", "unknown whale", "")
-        )
-    ):
+    # REJECT: unknown whale signals with insufficient edge (noise trades)
+    # Skip the LLM call — an unknown whale with no trade history and edge below
+    # the LLM threshold is not worth scoring. Saves ~0.3s per rejection.
+    is_unknown_whale = (
+        not signal.whale_name
+        or signal.whale_name.lower() in ("", "unknown", "unknown whale", "")
+    )
+    if is_unknown_whale and edge_val < 7:
         wallet = getattr(signal, "whale_address", "") or ""
         wallet_info = f" wallet={wallet[:10]}..." if wallet else ""
         log.info(
-            f"REJECT unknown whale zero edge: {signal.whale_name}{wallet_info} | "
+            f"REJECT unknown whale low edge={edge_val:.2f}: {signal.whale_name}{wallet_info} | "
             f"market={getattr(signal, 'market_title', '')[:40]} | "
             f"conf={signal.confidence:.0%}"
         )
