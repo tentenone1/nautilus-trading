@@ -1,6 +1,6 @@
 {
-    "timestamp": "2026-05-13T11:26:01Z",
-    "status": "CLEANED",
-    "detail": "Duplicate cleanup",
-    "pid_count": 3
+    "timestamp": "2026-05-13T11:33:01Z",
+    "status": "OK",
+    "detail": "Running normally",
+    "pid_count": 1
 }
