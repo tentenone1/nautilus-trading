@@ -17,6 +17,7 @@ from nautilus_trader.model.enums import OrderSide
 from strategies.whale_tracker_new import (
     WhaleSignal,
     SignalSource,
+    _categorize_market,
 )
 from strategies.wf_constants import (
     WHALE_BLACKLIST,
@@ -665,8 +666,10 @@ def validate_phase2_signal(
     # Get market category from signal
     market_category = getattr(signal, "market_category", "") or ""
     if not market_category:
-        # Fallback to general if not categorized
-        market_category = "general"
+        # Fallback: categorize from market title using keyword detection
+        # instead of defaulting to "general"
+        market_title = getattr(signal, "market_title", "") or ""
+        market_category = _categorize_market(market_title)
 
     # Normalize category to lowercase for matching
     category_lower = market_category.lower()

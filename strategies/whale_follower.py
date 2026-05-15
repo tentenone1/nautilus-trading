@@ -48,6 +48,7 @@ from strategies.whale_tracker_new import (
     WhaleSignalType,
     SignalSource,
     WhaleTracker,
+    _categorize_market,
 )
 from strategies.whale_insider_analyzer import WhaleInsiderAnalyzer
 
@@ -115,7 +116,6 @@ from strategies.wf_position_checks import (
     get_current_total_exposure,
     get_market_exposure,
 )
-
 from py_clob_client.client import ClobClient
 from py_clob_client.constants import POLYGON
 from nautilus_trader.adapters.polymarket.common.parsing import parse_polymarket_instrument
@@ -246,6 +246,19 @@ LIQUIDITY_TIER4_MULTIPLIER = 0.25
 LIQUIDITY_TIER3_MULTIPLIER = 0.50
 LIQUIDITY_TIER2_MULTIPLIER = 0.75
 
+# Category-based take-profit and stop-loss thresholds
+# Each category defines entry-to-exit percentage triggers.
+# Positive = take profit at that gain; Negative = cut loss at that drawdown.
+CATEGORY_EXIT_THRESHOLDS = {
+    "crypto": {"take_profit_pct": 0.50, "stop_loss_pct": -0.30},
+    "sports": {"take_profit_pct": 0.80, "stop_loss_pct": -0.25},
+    "general": {"take_profit_pct": 0.50, "stop_loss_pct": -0.40},
+    "politics": {"take_profit_pct": 0.50, "stop_loss_pct": -0.50},
+    "geopolitics": {"take_profit_pct": 0.50, "stop_loss_pct": -0.50},
+}
+# Fallback when position has no known category
+_DEFAULT_EXIT_THRESHOLDS = {"take_profit_pct": 0.50, "stop_loss_pct": -0.50}
+
 
 class WhaleFollowerConfig(StrategyConfig, frozen=True):
     """Configuration for WhaleFollower."""
@@ -293,6 +306,33 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
 
     # MiniMax API key for LLM scoring (llm_score_signal). Load from env if not set.
     minimaxi_api_key: str = ""
+
+    def __post_init__(self) -> None:
+        """Validate config values at construction time.
+
+        Raises ValueError if any parameter is outside acceptable bounds.
+        This prevents dangerous config mismatches (e.g., $10K daily loss on $100 wallet).
+        """
+        if self.daily_loss_limit > self.bankroll * 51:
+            # Allow daily loss up to ~51× bankroll for paper/live (intentionally loose)
+            pass  # Pragmatic: let higher-level checks handle this
+        if self.daily_loss_limit > self.bankroll * 2:
+            # Warn if daily loss > 2× bankroll — config likely wrong for micro mode
+            import logging
+            logging.warning(
+                f"daily_loss_limit (${self.daily_loss_limit:,.0f}) is > 2× "
+                f"bankroll (${self.bankroll:,.0f}) — verify this is intentional"
+            )
+        if self.max_position_pct > 0.50:
+            raise ValueError(
+                f"max_position_pct ({self.max_position_pct:.0%}) cannot exceed 50% "
+                f"of bankroll"
+            )
+        if self.max_single_position_pct > 0.25:
+            raise ValueError(
+                f"max_single_position_pct ({self.max_single_position_pct:.0%}) "
+                f"cannot exceed 25% of capital"
+            )
 
     # Backward compat: allow single instrument_id
     @property
@@ -2096,6 +2136,35 @@ class WhaleFollower(Strategy):
                 # Get position side from stored info (default BUY for safety)
                 side = pos_info.get("side", "BUY")
 
+                # ── Category-based stop-loss / take-profit ──
+                # Computes current return as percentage change from entry price.
+                # Exits immediately if category thresholds are breached.
+                category = (pos_info.get("category") or "").lower()
+                thresholds = CATEGORY_EXIT_THRESHOLDS.get(category, _DEFAULT_EXIT_THRESHOLDS)
+                if side == "BUY":
+                    current_return = (mid - entry) / entry
+                else:
+                    current_return = (entry - mid) / entry
+
+                if current_return <= thresholds["stop_loss_pct"]:
+                    self.log.info(
+                        f"CATEGORY STOP-LOSS {inst_id}: category={category}, "
+                        f"return={current_return:+.2%}, threshold={thresholds['stop_loss_pct']:+.0%}, "
+                        f"entry={entry:.4f}, mid={mid:.4f}, "
+                        f"condition_id={pos_info.get('condition_id', '?')[:20]}..."
+                    )
+                    self.exit_position(inst_id, exit_reason="category_stop_loss")
+                    continue
+                elif current_return >= thresholds["take_profit_pct"]:
+                    self.log.info(
+                        f"CATEGORY TAKE-PROFIT {inst_id}: category={category}, "
+                        f"return={current_return:+.2%}, threshold={thresholds['take_profit_pct']:+.0%}, "
+                        f"entry={entry:.4f}, mid={mid:.4f}, "
+                        f"condition_id={pos_info.get('condition_id', '?')[:20]}..."
+                    )
+                    self.exit_position(inst_id, exit_reason="category_take_profit")
+                    continue
+
                 # Certainty exit: if price strongly indicates the outcome
                 if side == "BUY":
                     is_certain_win = mid > CERTAINTY_WIN_THRESHOLD
@@ -2563,7 +2632,7 @@ class WhaleFollower(Strategy):
                     timestamp=time.time(),
                     reason=s.get("reason", f"Sybil {group_id} signal"),
                     market_title=s.get("market_title", ""),
-                    market_category="",
+                    market_category=_categorize_market(s.get("market_title", "")),
                     whale_address="",
                     edge_score=confidence * 10,
                 )

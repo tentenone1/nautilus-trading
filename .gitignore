@@ -1,8 +1,11 @@
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
+.ruff_cache/
+.pytest_cache/
 
 # Secrets
 .env
@@ -10,6 +13,8 @@ __pycache__/
 
 # Data (backed up separately)
 *.db
+*.db-shm
+*.db-wal
 data/
 research/
 pipeline/data/
@@ -23,13 +28,26 @@ pipeline/data/
 *.backup
 *.tar.gz
 *.orphan*
+*trades.db.backup*
 
 # System
 .paper.pid
+.run_paper.pid
 .claw/
 .history/
 ._*
 .DS_Store
+.coverage
+
+# Snapshots
+snapshots/
+tmp/
+.sandbox-home/
+.sandbox-tmp/
+
+# Results
+backtest_results/
 
 # Tool artifacts
 .aider*
+.clawd-todos.json

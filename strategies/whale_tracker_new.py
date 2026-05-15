@@ -278,6 +278,10 @@ def _categorize_market(title: str) -> str:
             "vs.",
             " vs ",
             "spread",
+            "spread:",
+            "run line",
+            "puck line",
+            " moneyline",
             "point",
             "over/under",
             "o/u",
@@ -664,6 +668,41 @@ class WhaleTracker:
         except Exception:
             return []
 
+    def _compute_pnl_edge(self, whale_name: str) -> float:
+        """Query trades.db to compute PnL-derived edge score for a whale.
+
+        The original edge_score formula (win_rate*0.8 + roi*0.2) was INVERTED:
+        high scores correlated with losses, low scores with profits. This method
+        replaces it with a score based on actual average PnL from trades.db.
+
+        Formula: clamp(0.3 + (avg_pnl / 500) * 0.5, min=0.1, max=0.9)
+        """
+        try:
+            import os as _os
+
+            trades_db = _os.path.join(
+                _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                "research",
+                "trades.db",
+            )
+            if not _os.path.exists(trades_db):
+                return 0.5  # neutral default when no DB available
+
+            conn = sqlite3.connect(trades_db)
+            conn.execute("PRAGMA busy_timeout=3000")
+            row = conn.execute(
+                "SELECT AVG(COALESCE(realized_pnl, 0)) FROM trades "
+                "WHERE whale_name = ?",
+                (whale_name,),
+            ).fetchone()
+            conn.close()
+
+            avg_pnl = row[0] if row and row[0] is not None else 0.0
+            raw = 0.3 + (avg_pnl / 500.0) * 0.5
+            return min(max(raw, 0.1), 0.9)
+        except Exception:
+            return 0.5  # safe default on error
+
     def _process_position(
         self, pos: dict, whale: WhaleIdentity, now: float
     ) -> Optional[WhaleSignal]:
@@ -738,11 +777,9 @@ class WhaleTracker:
             market_title=title,
             market_category=_categorize_market(title),
             whale_address=whale.proxy_wallet,
-            # Edge score: weighted combination of win_rate (primary) and roi (secondary)
-            # Avoids overly generous ROI fallback when win_rate is 0 or None
-            edge_score=min(
-                (whale.win_rate or 0.0) * 0.8 + (whale.roi or 0.0) * 0.2, 0.95
-            ),
+            # Edge score: derived from actual PnL per whale in trades.db
+            # Original win_rate*0.8+roi*0.2 formula was INVERTED — high scores lost money
+            edge_score=self._compute_pnl_edge(whale.name),
         )
 
     def scan_known_whales(self) -> list:
@@ -981,9 +1018,9 @@ class WhaleTracker:
 
             # Confidence based on trade size (for unknown/large-trade whales)
             confidence = min(0.50 + (usd / 100000) * 0.2, 0.70)
-            # Edge score is more conservative than confidence for unknown whales
-            # since we have no track record — caps at 0.50 for the largest trades
-            large_trade_edge = min(0.25 + (usd / 100000) * 0.15, 0.50)
+            # Edge score: large trades ($50K+) are CONTRARIAN indicators with better PnL
+            # Higher cap (0.85) allows edge scores proportional to trade impact
+            large_trade_edge = min(0.40 + (usd / 50000) * 0.15, 0.85)
 
             signals.append(
                 WhaleSignal(
@@ -1185,11 +1222,9 @@ class WhaleTracker:
                 suggested_size_usd=suggested_size,
                 whale_name=whale.name,
                 whale_roi=whale.roi,
-                # Edge score: weighted combination of win_rate (primary) and roi (secondary)
-                # Avoids overly generous ROI fallback when win_rate is 0 or None
-                edge_score=min(
-                    (whale.win_rate or 0.0) * 0.8 + (whale.roi or 0.0) * 0.2, 0.95
-                ),
+                # Edge score: derived from actual PnL per whale in trades.db
+                # Original win_rate*0.8+roi*0.2 formula was INVERTED — high scores lost money
+                edge_score=self._compute_pnl_edge(whale.name),
                 timestamp=trade.timestamp,
                 reason=f"{whale.name} ({whale.roi:.0%} ROI, {whale.style}) {side} {trade.outcome} "
                 f"${trade.usd_value:,.0f} @ {trade.price:.3f}",

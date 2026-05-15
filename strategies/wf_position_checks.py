@@ -26,6 +26,19 @@ from strategies.wf_constants import (
 )
 from strategies.wf_market_data import should_exit_for_resolution
 
+# ── Category-based exit thresholds ─────────────────────────────────────────────
+# Each category defines entry-to-exit percentage triggers.
+# Positive = take profit at that gain; Negative = cut loss at that drawdown.
+# Used in check_all_positions Phase 2 to fix the 'win small, lose big' pattern.
+CATEGORY_EXIT_THRESHOLDS = {
+    "crypto": {"take_profit_pct": 0.50, "stop_loss_pct": -0.30},
+    "sports": {"take_profit_pct": 0.80, "stop_loss_pct": -0.25},
+    "general": {"take_profit_pct": 0.50, "stop_loss_pct": -0.40},
+    "politics": {"take_profit_pct": 0.50, "stop_loss_pct": -0.50},
+    "geopolitics": {"take_profit_pct": 0.50, "stop_loss_pct": -0.50},
+}
+_DEFAULT_EXIT_THRESHOLDS = {"take_profit_pct": 0.50, "stop_loss_pct": -0.50}
+
 # ── Phase 1 Validation Integration ──────────────────────────────────────────────
 # Import validation modules with backward compatibility (graceful degradation)
 try:
@@ -230,6 +243,63 @@ def check_all_positions(
 
             position_edge = pos_info.get("edge_score", 0.0) or 0.0
             side = pos_info.get("side", "BUY")
+
+            # ── Category-based stop-loss / take-profit ──
+            # Computes current return as percentage change from entry price.
+            # Exits immediately if category thresholds are breached.
+            # This fixes the 'win small, lose big' pattern by preventing
+            # catastrophic losses before they compound.
+            category = (pos_info.get("category") or "").lower()
+            thresholds = CATEGORY_EXIT_THRESHOLDS.get(category, _DEFAULT_EXIT_THRESHOLDS)
+            if side == "BUY":
+                current_return = (mid - entry) / entry
+            else:
+                current_return = (entry - mid) / entry
+
+            if current_return <= thresholds["stop_loss_pct"]:
+                log.info(
+                    f"CATEGORY STOP-LOSS {inst_id}: category={category}, "
+                    f"return={current_return:+.2%}, threshold={thresholds['stop_loss_pct']:+.0%}, "
+                    f"entry={entry:.4f}, mid={mid:.4f}, "
+                    f"condition_id={pos_info.get('condition_id', '?')[:20]}..."
+                )
+                exit_position(
+                    config=config,
+                    cache=cache,
+                    log=log,
+                    open_positions=open_positions,
+                    exited_positions=exited_positions,
+                    last_exit_time=last_exit_time,
+                    resolution_poller=resolution_poller,
+                    clob_client=clob_client,
+                    instrument_id=inst_id,
+                    exit_reason="category_stop_loss",
+                    market_category=category,
+                    strategy=strategy,
+                )
+                continue
+            elif current_return >= thresholds["take_profit_pct"]:
+                log.info(
+                    f"CATEGORY TAKE-PROFIT {inst_id}: category={category}, "
+                    f"return={current_return:+.2%}, threshold={thresholds['take_profit_pct']:+.0%}, "
+                    f"entry={entry:.4f}, mid={mid:.4f}, "
+                    f"condition_id={pos_info.get('condition_id', '?')[:20]}..."
+                )
+                exit_position(
+                    config=config,
+                    cache=cache,
+                    log=log,
+                    open_positions=open_positions,
+                    exited_positions=exited_positions,
+                    last_exit_time=last_exit_time,
+                    resolution_poller=resolution_poller,
+                    clob_client=clob_client,
+                    instrument_id=inst_id,
+                    exit_reason="category_take_profit",
+                    market_category=category,
+                    strategy=strategy,
+                )
+                continue
 
             if side == "BUY":
                 is_certain_win = mid > CERTAINTY_WIN_THRESHOLD
