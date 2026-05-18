@@ -19,15 +19,20 @@ import sys
 import time
 import urllib.request
 import urllib.error
+import ssl
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 # ── Configuration ──────────────────────────────────────────────────────
-TRADES_DB = Path(__file__).parents[1] / "research" / "trades.db"
+TRADES_DB = Path("/home/elon-1/workspace/nautilus-trading/research/trades.db")
 CLOB_API = "https://clob.polymarket.com"
-RATE_LIMIT_SLEEP = 0.3          # seconds between API calls
-REQUEST_TIMEOUT = 15            # seconds
+RATE_LIMIT_SLEEP = 0.2          # seconds between API calls
+REQUEST_TIMEOUT = 25             # seconds per request
+MAX_RETRIES = 3                 # max retries per market on SSL/EOF errors
+RETRY_BASE_DELAY = 2.0          # base delay seconds for exponential backoff
+CHUNK_SIZE = 30                 # markets per batch before commit
+CHECKPOINT_FILE = Path("/tmp/resolution_checkpoint.json")
 
 # ── Schema ─────────────────────────────────────────────────────────────
 # trades table has: condition_id, instrument_id, token_id, side,
@@ -47,6 +52,9 @@ def get_market_resolution(condition_id: str) -> Optional[dict]:
     """
     Fetch market data from CLOB API and return resolution info.
     
+    Retries up to MAX_RETRIES times on SSL/EOF/network errors with
+    exponential backoff. Returns None only after all retries exhausted.
+    
     Returns dict with keys:
         - resolved (bool): market has a definitive winner
         - winning_outcome (str): name of the winning outcome
@@ -62,11 +70,34 @@ def get_market_resolution(condition_id: str) -> Optional[dict]:
     url = f"{CLOB_API}/markets/{condition_id}"
     req = urllib.request.Request(url, headers={"User-Agent": "Hermes/1.0"})
     
-    try:
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode())
-    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, OSError) as e:
-        print(f"  [WARN] API error for {condition_id[:30]}... : {e}", file=sys.stderr)
+    last_error: str = ""
+    data: Optional[dict] = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+                data = json.loads(resp.read().decode())
+            break
+        except (
+            ssl.SSLEOFError,
+            ssl.SSLError,
+            ConnectionResetError,
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+            OSError,
+        ) as e:
+            last_error = str(e)
+            if attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                print(f"  [RETRY] {condition_id[:30]}... attempt {attempt}/{MAX_RETRIES} "
+                      f"failed ({e}), retrying in {delay:.1f}s...", file=sys.stderr)
+                time.sleep(delay)
+            else:
+                print(f"  [WARN] API error for {condition_id[:30]}... (after {MAX_RETRIES} "
+                      f"attempts): {e}", file=sys.stderr)
+                return None
+    
+    if data is None:
         return None
     
     if not isinstance(data, dict):
@@ -531,7 +562,17 @@ def main():
         print("No trackable condition_ids found.")
         conn.close()
         return
-    
+
+    # Load checkpoint to resume from last completed chunk
+    checkpoint: dict[str, int] = {}
+    if CHECKPOINT_FILE.exists():
+        try:
+            checkpoint = json.loads(CHECKPOINT_FILE.read_text())
+            resumed = checkpoint.get("completed_chunks", 0)
+            print(f"[CHECKPOINT] Resuming from chunk {resumed}")
+        except Exception:
+            checkpoint = {}
+
     # Group by condition_id, keeping metadata
     condition_map: dict[str, dict] = {}
     for row in all_conditions:
@@ -542,53 +583,102 @@ def main():
                 "market_title": row.get("market_title", ""),
                 "category": row.get("category", ""),
             }
-    
+
     total = len(condition_map)
     print(f"Found {total} unique market condition_ids to check")
     print()
-    
+
+    # Build ordered list of condition_ids
+    cid_list = list(condition_map.keys())
+    num_chunks = (total + CHUNK_SIZE - 1) // CHUNK_SIZE
+    chunk_errors = 0
+    chunk_resolved = 0
+    chunk_unresolved = 0
+
     results = []
     processed = 0
-    
-    for cid, meta in condition_map.items():
-        processed += 1
-        print(f"[{processed}/{total}] Checking {cid[:30]}... ({meta.get('category', '?')})")
-        
-        trades = fetch_trades_for_condition(conn, cid)
-        result = run_resolution_check(
-            condition_id=cid,
-            all_trades=trades,
-            update_db=args.update_db,
-            conn=conn,
-        )
-        results.append(result)
-        
+    completed_chunks = checkpoint.get("completed_chunks", 0)
+
+    for chunk_idx in range(num_chunks):
+        chunk_start = chunk_idx * CHUNK_SIZE
+        chunk_end = min(chunk_start + CHUNK_SIZE, total)
+        chunk_cids = cid_list[chunk_start:chunk_end]
+        is_first_chunk = chunk_idx == 0
+
+        # Skip chunks already completed (chunk_idx < completed_chunks means fully done)
+        # Always run chunk 0 (is_first_chunk) unless checkpoint covers beyond it
+        if chunk_idx < completed_chunks:
+            continue
+
+        print(f"\n=== Chunk {chunk_idx + 1}/{num_chunks} ({len(chunk_cids)} markets) ===")
+
+        for cid in chunk_cids:
+            meta = condition_map[cid]
+            processed += 1
+            print(f"[{processed}/{total}] Checking {cid[:30]}... ({meta.get('category', '?')})")
+
+            trades = fetch_trades_for_condition(conn, cid)
+            result = run_resolution_check(
+                condition_id=cid,
+                all_trades=trades,
+                update_db=args.update_db,
+                conn=conn,
+            )
+            results.append(result)
+
+            # Per-market result summary
+            if result.get("error"):
+                print(f"  ❌ Error: {result['error']}")
+            elif result.get("resolved"):
+                print(f"  ✅ RESOLVED: {result.get('winning_outcome', '?')} | "
+                      f"{result.get('trades_updated', 0)} trades updated")
+            else:
+                print(f"  ⏳ Not resolved (closed={result.get('closed', '?')})")
+
+            time.sleep(RATE_LIMIT_SLEEP)
+
+        # Commit after each chunk
         if args.update_db:
             conn.commit()
-        
-        # Show one-liner result
-        if result.get("error"):
-            print(f"  ❌ Error: {result['error']}")
-        elif result.get("resolved"):
-            print(f"  ✅ RESOLVED: {result.get('winning_outcome', '?')} | {result.get('trades_updated', 0)} trades updated")
-        else:
-            print(f"  ⏳ Not resolved (closed={result.get('closed', '?')})")
-        
-        time.sleep(RATE_LIMIT_SLEEP)
-    
+
+        # Update checkpoint
+        completed_chunks = chunk_idx + 1
+        try:
+            CHECKPOINT_FILE.write_text(json.dumps({"completed_chunks": completed_chunks}))
+        except Exception as e:
+            print(f"[WARN] Could not write checkpoint: {e}", file=sys.stderr)
+
+        # Count chunk stats
+        chunk_resolved = sum(1 for r in results[chunk_start:chunk_end] if r.get("resolved"))
+        chunk_errors = sum(1 for r in results[chunk_start:chunk_end] if r.get("error"))
+        chunk_unresolved = sum(
+            1 for r in results[chunk_start:chunk_end]
+            if not r.get("resolved") and not r.get("error")
+        )
+        print(f"Chunk {completed_chunks}/{num_chunks}: "
+              f"{chunk_resolved} resolved, {chunk_errors} errors, "
+              f"{chunk_unresolved} unresolved")
+
+    # Clear checkpoint on successful completion
+    if CHECKPOINT_FILE.exists():
+        try:
+            CHECKPOINT_FILE.unlink()
+        except Exception:
+            pass
+
     # Generate report
     stats = get_statistics(conn) if args.update_db else None
     report = generate_report(results, stats)
-    
+
     report_path = TRADES_DB.parent / f"resolution_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
     with open(report_path, "w") as f:
         f.write(report)
-    
+
     print()
     print("─" * 72)
     print(report)
     print(f"\nReport saved to: {report_path}")
-    
+
     conn.close()
 
 
