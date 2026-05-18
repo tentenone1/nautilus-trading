@@ -24,7 +24,7 @@ pipeline/data/
 *.log.*
 
 # Backups
-*.bak
+*.bak*
 *.backup
 *.tar.gz
 *.orphan*
@@ -38,6 +38,13 @@ pipeline/data/
 ._*
 .DS_Store
 .coverage
+
+# Agent config
+.hermes/
+
+# Backups
+*.bak*
+*.backup
 
 # Runtime state
 .guard/
