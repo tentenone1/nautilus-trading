@@ -52,7 +52,7 @@ def query_llm(prompt: str) -> str:
 
 def main():
     # Try primary DB first, fall back to backup if insufficient data
-    db_path = BACKUP_DB_PATH if os.path.exists(BACKUP_DB_PATH) else DB_PATH
+    db_path = DB_PATH
     db = sqlite3.connect(db_path)
 
     # Check if backup has more data than primary
@@ -96,7 +96,7 @@ def main():
             COUNT(DISTINCT condition_id) as unique_markets,
             COUNT(DISTINCT category) as categories,
             GROUP_CONCAT(DISTINCT category) as cat_list,
-            COALESCE(SUM(actual_pnl), 0) as total_pnl,
+            COALESCE(SUM(realized_pnl), 0) as total_pnl,
             COUNT(CASE WHEN actual_pnl > 0 THEN 1 END) as wins,
             COUNT(CASE WHEN actual_pnl < 0 THEN 1 END) as losses
         FROM trades 

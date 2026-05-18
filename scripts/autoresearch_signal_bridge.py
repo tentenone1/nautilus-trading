@@ -9,6 +9,8 @@ Pipeline:
 5. The running whale_follower polls this queue and executes via _on_signal()
 
 State tracking: research/autoresearch_bridge_state.json prevents re-processing.
+from nrs_guardian import enforce_singleton
+enforce_singleton("signal_bridge")
 """
 
 from __future__ import annotations

@@ -88,6 +88,7 @@ WHALE_BLACKLIST = frozenset({
     "mooseborzoi",        # entity cluster — skilled_human
     "pilotlady",        # entity cluster — skilled_human
     "trade-via-Gravia",        # entity cluster — skilled_human
+    "autoresearch_llm",  # entity cluster — degenerate_human
 })
 
 SPORTS_WHALE_BLACKLIST = frozenset({

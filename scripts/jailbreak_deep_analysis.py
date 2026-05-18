@@ -10,7 +10,7 @@ import json, urllib.request, sys, os
 LLM_URL = "http://127.0.0.1:8080/v1/chat/completions"
 LLM_MODEL = "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
 
-BASE_DIR = "/Users/tentenone/workspace/nautilus-trading"
+BASE_DIR = "/home/elon-1/workspace/nautilus-trading"
 DATA_PATH = os.path.join(BASE_DIR, "research", "jailbreak_fresh_data.json")
 OUTPUT_PATH = os.path.join(BASE_DIR, "research", "jailbreak_deep_analysis.json")
 

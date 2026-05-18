@@ -81,10 +81,10 @@ config_node = TradingNodeConfig(
 
 # ── Strategy ───────────────────────────────────────────────────────────
 config_strategy = WhaleFollowerConfig(
-    instrument_id=INSTRUMENT_ID,
+    instrument_ids=[INSTRUMENT_ID],
     bankroll=float(os.getenv("BANKROLL", "10000")),
     kelly_fraction=float(os.getenv("KELLY_FRACTION", "0.25")),
-    whale_win_rate=float(os.getenv("WHALE_WIN_RATE", "0.55")),
+    
     stop_loss_pct=float(os.getenv("STOP_LOSS_PCT", "0.15")),
     max_position_pct=float(os.getenv("MAX_POSITION_PCT", "0.10")),
 )

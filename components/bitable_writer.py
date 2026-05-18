@@ -19,7 +19,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Path to lark-cli binary
-LARK_CLI_PATH: str = "/opt/homebrew/bin/lark-cli"
+LARK_CLI_PATH: str = "/home/elon-1/.npm-global/bin/lark-cli"
 
 # Bitable tokens
 RESEARCH_LOG_TOKEN: str = "KJqZbhUi2aNrebs3JzPcjMuinjg"

@@ -131,8 +131,23 @@ def main():
                             "whales": list(m["whales"]),
                         }
     
-    # 3. Check tracked markets for price pumps
-    for cid in list(state.get("tracked_markets", {}).keys()):
+    # Save detections before pump check loop (early save prevents timeout data loss)
+    if detections:
+        existing = []
+        if os.path.exists(OUTPUT_FILE):
+            try:
+                with open(OUTPUT_FILE) as f:
+                    existing = json.load(f)
+            except Exception:
+                pass
+        existing.extend(detections)
+        existing = existing[-100:]
+        with open(OUTPUT_FILE, "w") as f:
+            json.dump(existing, f, indent=2)
+
+    # 3. Check tracked markets for price pumps (max 10 per run to prevent timeout)
+    tracked_cids = list(state.get("tracked_markets", {}).keys())[:10]
+    for cid in tracked_cids:
         tm = state["tracked_markets"][cid]
         age = now - tm["first_seen"]
         
@@ -168,8 +183,9 @@ def main():
         if age > 86400:
             del state["tracked_markets"][cid]
     
-    # 4. Save detections
-    if detections:
+    # 4. Save pump detections from section 3 (signal detections already saved in early save)
+    pump_dets = [d for d in detections if d.get('type') == 'pump_detected']
+    if pump_dets:
         existing = []
         if os.path.exists(OUTPUT_FILE):
             try:
@@ -177,7 +193,7 @@ def main():
                     existing = json.load(f)
             except Exception:
                 pass
-        existing.extend(detections)
+        existing.extend(pump_dets)
         # Keep last 100
         existing = existing[-100:]
         with open(OUTPUT_FILE, "w") as f:

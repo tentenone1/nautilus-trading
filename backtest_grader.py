@@ -2,8 +2,11 @@
 """Backtesting Grader - reads from trades.db for real performance.
 Usage: python backtest_grader.py [--days 7] [--json out.json]
 """
-import argparse, json, math, sqlite3, sys
-from collections import defaultdict
+import argparse
+import json
+import math
+import sqlite3
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path

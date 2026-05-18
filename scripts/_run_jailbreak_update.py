@@ -18,7 +18,7 @@ APP_SECRET = env_vars.get("FEISHU_APP_SECRET", "")
 BASE_TOKEN = "Jwr7b4Rf2a1EsfsqvwZcFJoXnVf"
 TABLE_ID = "tblSM2BBBGJbZGO3"
 
-PARSED_PATH = "/Users/tentenone/workspace/nautilus-trading/research/jailbreak_deep_parsed.json"
+PARSED_PATH = "/home/elon-1/workspace/nautilus-trading/research/jailbreak_deep_parsed.json"
 
 def get_token():
     resp = json.loads(urlopen(Request(

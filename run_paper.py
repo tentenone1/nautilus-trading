@@ -58,7 +58,7 @@ def _check_pid_lock():
             # Check if process with that PID is still running
             os.kill(old_pid, 0)  # signal 0 = existence check
             print(f"Another instance already running (PID {old_pid}). Exiting (code 1).")
-            sys.exit(1)  # exit 1 = failure so systemd RestartPreventExitStatus=1 doesn't retry
+            sys.exit(0)  # exit 0 = clean exit — systemd Restart=on-failure won't retry
         except (ValueError, OSError, ProcessLookupError):
             # PID file stale or process dead — we can start
             pass
@@ -144,10 +144,7 @@ def load_whale_markets_from_api(limit: int = 20) -> list[dict]:
     """
     import time
     
-    db_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "pipeline", "data", "whale_discovery.db"
-    )
+    db_path = "/home/elon-1/workspace/nautilus-trading/data/whale_discovery.db"
     addresses = []
     if os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -243,7 +240,7 @@ for i, m in enumerate(whale_markets):
 
 if not whale_markets:
     print("ERROR: No whale markets found. Check the discovery DB.")
-    sys.exit(1)
+    sys.exit(1)  # exit 1 = failure — systemd Restart=on-failure won't retry
 
 # ── Fetch instrument definitions from Polymarket (anonymous) ─────────────
 print(f"\nFetching {len(whale_markets)} market definitions from CLOB API...")
@@ -291,7 +288,7 @@ print(f"\nLoaded {len(all_instruments)} instruments from {len(seen_conditions)} 
 
 if not all_instruments:
     print("ERROR: No active instruments loaded")
-    sys.exit(1)
+    sys.exit(1)  # exit 1 = failure — systemd Restart=on-failure won't retry
 
 # Extract instrument IDs
 instrument_ids = [inst.id for inst, _, _ in all_instruments]

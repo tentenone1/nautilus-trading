@@ -9,6 +9,8 @@ Runs as a background process:
 import sys
 import os
 import time
+from nrs_guardian import enforce_singleton
+enforce_singleton("whale_pipeline")
 import json
 import signal as sig
 from datetime import datetime, timezone

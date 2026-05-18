@@ -69,7 +69,7 @@ def get_wallet_for_whale(whale_name: str) -> str | None:
         if os.path.exists(db_path):
             db = sqlite3.connect(db_path)
             result = db.execute(
-                "SELECT DISTINCT whale_wallet FROM trades WHERE whale_name = ? LIMIT 1",
+                "SELECT DISTINCT whale_address FROM trades WHERE whale_name = ? AND whale_address IS NOT NULL AND whale_address != '' LIMIT 1",
                 (whale_name,)
             ).fetchone()
             db.close()

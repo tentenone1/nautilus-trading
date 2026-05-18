@@ -24,9 +24,9 @@ def test_get_db_path_returns_correct_paths():
         live_path = router.get_db_path("live")
         replay_path = router.get_db_path("replay")
         
-        assert paper_path.name == "paper_trades.db"
-        assert live_path.name == "live_trades.db"
-        assert replay_path.name == "replay_trades.db"
+        assert paper_path.name == "/home/elon-1/workspace/nautilus-trading/data/trades.db"
+        assert live_path.name == "/home/elon-1/workspace/nautilus-trading/data/trades.db"
+        assert replay_path.name == "/home/elon-1/workspace/nautilus-trading/data/trades.db"
         
         assert paper_path.parent == Path(tmpdir)
         assert live_path.parent == Path(tmpdir)
@@ -52,7 +52,7 @@ def test_current_mode_from_env():
     os.environ["TRADE_MODE"] = "live"
     
     assert router.get_current_mode() == "live"
-    assert router.get_current_db_path().name == "live_trades.db"
+    assert router.get_current_db_path().name == "/home/elon-1/workspace/nautilus-trading/data/trades.db"
     
     # Clean up
     del os.environ["TRADE_MODE"]
@@ -67,7 +67,7 @@ def test_default_mode_is_paper():
     router = DatabaseRouter(default_mode="paper")
     
     assert router.get_current_mode() == "paper"
-    assert router.get_current_db_path().name == "paper_trades.db"
+    assert router.get_current_db_path().name == "/home/elon-1/workspace/nautilus-trading/data/trades.db"
 
 
 def test_set_mode_changes_env():
@@ -94,9 +94,9 @@ def test_get_all_db_paths():
         assert "live" in all_paths
         assert "replay" in all_paths
         
-        assert all_paths["paper"].name == "paper_trades.db"
-        assert all_paths["live"].name == "live_trades.db"
-        assert all_paths["replay"].name == "replay_trades.db"
+        assert all_paths["paper"].name == "/home/elon-1/workspace/nautilus-trading/data/trades.db"
+        assert all_paths["live"].name == "/home/elon-1/workspace/nautilus-trading/data/trades.db"
+        assert all_paths["replay"].name == "/home/elon-1/workspace/nautilus-trading/data/trades.db"
 
 
 def test_base_dir_is_created():
@@ -105,6 +105,6 @@ def test_base_dir_is_created():
         new_dir = Path(tmpdir) / "new_research"
         assert not new_dir.exists()
         
-        router = DatabaseRouter(base_dir=new_dir)
+        DatabaseRouter(base_dir=new_dir)
         
         assert new_dir.exists()

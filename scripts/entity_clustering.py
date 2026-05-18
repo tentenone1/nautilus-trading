@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 # Resolve relative to the script's location (works on both Mac and 1700)
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 NAUTILUS_ROOT = os.path.dirname(SCRIPT_DIR)  # goes up from scripts/ to nautilus-trading/
+DB_PATH = os.path.join(NAUTILUS_ROOT, "research", "trades.db")
 BACKUP_DB_PATH = os.path.join(NAUTILUS_ROOT, "research", "trades.db.archive")
 OUTPUT_PATH = os.path.join(NAUTILUS_ROOT, "research", "entity_clusters.json")
 CORRELATION_WINDOW_SECS = 60  # Trades within 1 minute = correlated

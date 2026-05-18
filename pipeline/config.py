@@ -213,3 +213,4 @@ CATEGORIES = {
     "directional_edge": "Strong conviction bets on specific domains",
     "emerging": "New whales with strong early signals",
 }
+MIN_ALPHA_SCORE = 60

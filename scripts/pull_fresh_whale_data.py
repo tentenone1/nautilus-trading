@@ -69,7 +69,7 @@ for name, wallet in ALL_WALLETS.items():
         print(f"  -> ERROR: {e}", flush=True)
     time.sleep(0.5)
 
-outpath = "/Users/tentenone/workspace/nautilus-trading/research/jailbreak_fresh_data.json"
+outpath = "/home/elon-1/workspace/nautilus-trading/research/jailbreak_fresh_data.json"
 with open(outpath, "w") as f:
     json.dump(results, f, indent=2)
 

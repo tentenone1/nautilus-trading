@@ -12,7 +12,7 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 
-DB_PATH = "pipeline/data/whale_discovery.db"
+DB_PATH = "/home/elon-1/workspace/nautilus-trading/data/whale_discovery.db"
 PROFILES_PATH = "research/whale_profiles.json"
 LLM_URL = "http://127.0.0.1:8080/v1/chat/completions"
 LLM_MODEL = "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"

@@ -1,9 +1,8 @@
 import sqlite3
 import json
-from datetime import datetime
 
 # Check whale_discovery.db schema
-conn = sqlite3.connect('pipeline/data/whale_discovery.db')
+conn = sqlite3.connect("/home/elon-1/workspace/nautilus-trading/data/whale_discovery.db")
 c = conn.cursor()
 c.execute("SELECT name FROM sqlite_master WHERE type='table'")
 tables = c.fetchall()
@@ -31,7 +30,7 @@ except Exception as e:
 conn.close()
 
 # Check trades.db
-conn2 = sqlite3.connect('data/trades.db')
+conn2 = sqlite3.connect("/home/elon-1/workspace/nautilus-trading/data/trades.db")
 c2 = conn2.cursor()
 c2.execute("SELECT name FROM sqlite_master WHERE type='table'")
 tables2 = c2.fetchall()

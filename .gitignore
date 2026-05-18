@@ -39,6 +39,18 @@ pipeline/data/
 .DS_Store
 .coverage
 
+# Runtime state
+.guard/
+.signal_*
+daily_state.json
+grading-latest.json
+open_positions.json
+
+# Logs
+logs/*.err
+logs/logrotate-*.state
+logs/events/
+
 # Snapshots
 snapshots/
 tmp/

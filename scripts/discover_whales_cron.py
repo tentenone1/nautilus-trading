@@ -9,12 +9,14 @@ import time
 import requests
 from pathlib import Path
 from collections import Counter
+from nrs_guardian import enforce_singleton
+enforce_singleton("discover_whales")
 from strategies.whale_tiering import WhaleTiering
 
 WHALE_TIERING = WhaleTiering()
 
 BASE = Path(__file__).resolve().parents[1]
-DB_PATH = BASE / "pipeline" / "data" / "whale_discovery.db"
+DB_PATH = Path("/home/elon-1/workspace/nautilus-trading/data/whale_discovery.db")
 
 LEADERBOARD_URL = "https://data-api.polymarket.com/v1/leaderboard"
 WHALE_API = "https://data-api.polymarket.com/v1/whales"
