@@ -43,7 +43,7 @@ PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 STATE_FILE: Path = PROJECT_ROOT / "research" / "autoresearch_state.json"
 DETECTIONS_FILE: Path = PROJECT_ROOT / "research" / "signal_detections.json"
 OUTPUT_FILE: Path = PROJECT_ROOT / "research" / "trade_recommendations.json"
-WHALE_DB_PATH: Path = PROJECT_ROOT / "pipeline" / "data" / "whale_discovery.db"
+WHALE_DB_PATH: Path = PROJECT_ROOT / "data" / "whale_discovery.db"
 
 LLM_URL: str = "http://127.0.0.1:8080/v1/chat/completions"
 LLM_MODEL: str = "qwen3.6-35b-a3b-uncensored-hauhaucs-aggressive"
