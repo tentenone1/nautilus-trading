@@ -91,13 +91,16 @@ def upsert_whale(address: str, name: str, alpha_score: float = 0,
     """Insert or update a whale record."""
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
+    # Write directly to whales_new to bypass read-only view
+    existing = conn.execute(
+        "SELECT discovered_at FROM whales_new WHERE address = ?", (address,)
+    ).fetchone()
+    discovered = existing[0] if existing else now
     conn.execute("""
-        INSERT INTO whales (address, name, alpha_score, pnl, volume,
-                           win_rate, total_trades, market_category, tags, last_seen,
-                           discovered_at, updated_at, capital_tier, precision_tier)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(
-            (SELECT discovered_at FROM whales WHERE address = ?), ?
-        ), ?, ?, ?)
+        INSERT INTO whales_new (address, name, alpha_score, pnl, volume,
+                               win_rate, total_trades, market_category, tags, last_seen,
+                               discovered_at, updated_at, capital_tier, precision_tier)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(address) DO UPDATE SET
             name = excluded.name,
             alpha_score = excluded.alpha_score,
@@ -112,23 +115,24 @@ def upsert_whale(address: str, name: str, alpha_score: float = 0,
             capital_tier = excluded.capital_tier,
             precision_tier = excluded.precision_tier
     """, (address, name, alpha_score, pnl, volume, win_rate, total_trades,
-          market_category, tags, now, address, now, now, capital_tier, precision_tier))
+          market_category, tags, now, discovered, now, capital_tier, precision_tier))
     conn.commit()
     conn.close()
 
 
-def add_signal(whale_address: str, whale_name: str, alpha_score: float,
-               market_slug: str, market_title: str, market_category: str = "",
+def add_signal(whale_address: str, whale_name: str,
+               market_slug: str = "", market_title: str = "", market_category: str = "",
                condition_id: str = "", token_id: str = "", outcome: str = "",
                side: str = "", size: float = 0.0, price: float = 0.0,
                usd_value: float = 0.0, confidence: float = 0.0,
+               alpha_score: float = 0.0,
                capital_tier: str = "", precision_tier: str = "") -> int:
     """Add a whale signal. Returns signal ID or 0 if duplicate."""
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
     try:
         cursor = conn.execute("""
-            INSERT INTO whale_signals
+            INSERT INTO whale_signals_new
                 (whale_address, whale_name, alpha_score, market_slug,
                  market_title, market_category, condition_id, token_id, outcome, side,
                  size, price, usd_value, confidence, detected_at, capital_tier, precision_tier)
@@ -167,7 +171,7 @@ def mark_signals_signaled(signal_ids: list) -> None:
         return
     conn = get_connection()
     conn.execute(
-        "UPDATE whale_signals SET signaled = 1 WHERE id IN ({})".format(
+        "UPDATE whale_signals_new SET signaled = 1 WHERE id IN ({})".format(
             ",".join("?" for _ in signal_ids)
         ),
         signal_ids
