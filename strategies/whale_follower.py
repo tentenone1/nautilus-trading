@@ -101,6 +101,8 @@ from strategies.wf_constants import (
     SINGLE_TEAM_PATTERNS,
     MIN_ENTRY_PRICE,
     MIN_CONFIDENCE,
+    PAPER_ONLY_CATEGORIES,
+    BLOCKED_CATEGORIES,
 )
 from strategies.wf_position_persistence import (
     save_open_positions,
@@ -791,6 +793,7 @@ class WhaleFollower(Strategy):
             # Final category fallback — never leave as Unknown or empty
             if not category or category == "Unknown":
                 category = "general"
+            paper_trade = 1 if category.lower() in PAPER_ONLY_CATEGORIES else 0
 
             import uuid
             trade_id = str(uuid.uuid4())
@@ -839,6 +842,7 @@ class WhaleFollower(Strategy):
                 entry_reason=entry_reason,
                 instrument_id=inst_id,
                 condition_id=cond_id,
+                paper_trade=paper_trade,
                 log_func=self.log.info,
             )
             if result is None:
@@ -1320,9 +1324,32 @@ class WhaleFollower(Strategy):
             )
             return
 
-        # Sports daily loss breach check
+        # ── Category routing: live vs paper vs blocked ─────────────────────────
         mc = getattr(signal, 'market_category', '') or ''
-        if mc.lower() == 'sports' and self._sports_daily_loss_breached:
+        mc_lower = mc.lower()
+
+        # Hard block for blocked categories
+        if mc_lower in BLOCKED_CATEGORIES:
+            self.log.info(f"BLOCKED category={mc_lower} | {signal.condition_id[:50]} — rejected")
+            return
+
+        # Paper-only categories: block in live mode, allow in paper mode
+        if mc_lower in PAPER_ONLY_CATEGORIES:
+            trading_mode = os.getenv("TRADING_MODE", "")
+            if trading_mode == "live":
+                self.log.info(
+                    f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} — "
+                    f"blocked in live mode, would be sandbox fill"
+                )
+                return
+            # In paper mode: proceed, but track separately (see _record_trade)
+            self.log.info(
+                f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} — "
+                f"sandbox fill (P&L excluded from daily loss limit)"
+            )
+
+        # Sports daily loss breach check
+        if mc_lower == 'sports' and self._sports_daily_loss_breached:
             self.log.warning(
                 "Sports daily loss limit breached, skipping sports signal execution"
             )
@@ -1933,12 +1960,24 @@ class WhaleFollower(Strategy):
         # ── POSITION CACHE DEDUP: Mark as exited ──
         self._exited_positions.add(inst_key)
         
-        # Update daily P&L
-        self._daily_pnl += realized_pnl
-        
-        # Update sports daily P&L if sports position
+        # Update daily P&L (exclude paper-only categories — they don't count toward daily loss limit)
         category = pos_info.get('category', '') or ''
-        if category.lower() == 'sports':
+        cat_lower = category.lower()
+        if cat_lower not in PAPER_ONLY_CATEGORIES:
+            self._daily_pnl += realized_pnl
+            if self._daily_pnl <= -self._daily_loss_limit:
+                self._daily_loss_breached = True
+                self.log.warning(
+                    f"Daily loss limit breached: ${self._daily_pnl:.2f} <= -${self._daily_loss_limit:.2f}"
+                )
+        else:
+            self.log.info(
+                f"PAPER_ONLY P&L excluded from daily limit: category={cat_lower} | "
+                f"pnl=${realized_pnl:+.2f} | cumulative paper_pnl not tracked"
+            )
+
+        # Update sports daily P&L if sports position
+        if cat_lower == 'sports':
             self._sports_daily_pnl += realized_pnl
 
         # Persist daily state to disk so kill switches survive restarts

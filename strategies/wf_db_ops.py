@@ -77,9 +77,16 @@ def _ensure_db_schema(conn: sqlite3.Connection) -> None:
             actual_fill_price REAL,
             slippage_bps REAL DEFAULT 0,
             fill_completion_pct REAL DEFAULT 100,
-            snapshot_id TEXT
+            snapshot_id TEXT,
+            paper_trade INTEGER DEFAULT 0
         )
     """)
+
+    # Add paper_trade column to existing tables (no-op if column already exists)
+    try:
+        conn.execute("ALTER TABLE trades ADD COLUMN paper_trade INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # column already exists
 
     # Remove the UNIQUE INDEX on (whale_name, condition_id) — trade_id is already
     # the PRIMARY KEY and is inherently unique. Whale re-trading the same market
@@ -165,6 +172,7 @@ def log_trade_to_db(
     slippage_bps: float = 0.0,
     fill_completion_pct: float = 100.0,
     snapshot_id: str = "",
+    paper_trade: int = 0,
     db_path: Optional[str] = None,
     log_func: Optional[Callable[[str], None]] = None,
 ) -> Optional[str]:
@@ -228,8 +236,8 @@ def log_trade_to_db(
                 kelly_fraction, entry_reason, instrument_id, condition_id,
                 detection_delay_ms, execution_delay_ms, fill_delay_ms,
                 total_latency_ms, intended_entry_price, actual_fill_price,
-                slippage_bps, fill_completion_pct, snapshot_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                slippage_bps, fill_completion_pct, snapshot_id, paper_trade
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trade_id,
             timestamp,
@@ -256,6 +264,7 @@ def log_trade_to_db(
             slippage_bps,
             fill_completion_pct,
             snapshot_id,
+            paper_trade,
         ))
         conn.execute("COMMIT")
         conn.close()

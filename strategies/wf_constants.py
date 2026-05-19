@@ -237,19 +237,26 @@ VALIDATION_MAX_POSITION_USD = 2.0  # $2 max single position (2% of $100)
 VALIDATION_MAX_CONCURRENT = 5  # Max 5 concurrent positions
 VALIDATION_KELLY_FRACTION = 0.10  # 10% Kelly (conservative for validation)
 
-# Market category whitelist — only allow proven profitable categories
+# Live-eligible categories — only these trade with real capital
 ALLOWED_CATEGORIES = frozenset({
-    "politics",      # 55%+ win rate, high volume
-    "geopolitics",   # 58% win rate, conflict markets
-    "general",       # Default category, mixed performance
-    "sports",        # 38% win rate but fade strategy inverts this
+    "general",       # +$33,898 over 545 trades, 62% win rate — the core edge
+    "geopolitics",    # +$1,664 over 45 trades, 33% win rate but big winners
+    "politics",       # +$665 over 32 trades, 31% win rate, positive P&L
 })
 
-# Blocked categories — reject unprofitable/risky categories
+# Paper-only categories — sandbox fills, no real capital, no daily loss limit count
+# These collect live-signal data for future re-evaluation (after ~90 days of paper)
+PAPER_ONLY_CATEGORIES = frozenset({
+    "sports",        # -$3,510 over 522 trades — was forced-exit constrained
+    "crypto",        # -$611 over 335 trades, 58% WR but avg entry $0.009
+    "economics",     # -$337 over 19 trades, 32% WR
+    "technology",    # -$155 over 7 trades, 14% WR — sample too small
+})
+
+# Permanently blocked categories
 BLOCKED_CATEGORIES = frozenset({
-    "crypto",        # 42% win rate, high volatility
-    "entertainment", # Unpredictable outcomes
-    "finance",       # Low signal quality
+    "entertainment", # No edge data, unpredictable outcomes
+    "finance",       # Low signal quality, no live track record
     "unknown",       # Unclassified markets
 })
 
