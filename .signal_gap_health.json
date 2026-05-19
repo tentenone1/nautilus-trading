@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-19T11:05:01.170435+00:00",
+  "timestamp": "2026-05-19T11:35:01.605655+00:00",
   "healthy": true,
   "status": "\u2705 HEALTHY",
   "checks": {
@@ -9,7 +9,7 @@
     "trades_last_hour": 77,
     "closes_last_hour": 23,
     "consecutive_gaps": 0,
-    "stall_minutes": 75,
+    "stall_minutes": 105,
     "max_open_positions": 50
   },
   "alerts": []

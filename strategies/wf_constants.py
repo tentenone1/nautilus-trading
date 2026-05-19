@@ -15,10 +15,6 @@ from nautilus_trader.model.identifiers import InstrumentId
 TRADE_BUFFER_SIZE_THRESHOLD = 200  # Minimum USD to buffer a trade
 TRADE_BUFFER_FLUSH_COUNT = 5  # Number of trades to trigger buffer flush
 
-# ── Signal Filters ─────────────────────────────────────────────────────────────
-
-MIN_ENTRY_PRICE = 0.01   # Reject entries below 1 cent (near-zero EV long shots)
-MIN_CONFIDENCE = 0.30    # Minimum confidence threshold for any signal
 
 
 # ── Exit Timer Configuration ─────────────────────────────────────────────────
@@ -242,13 +238,13 @@ VALIDATION_KELLY_FRACTION = 0.10  # 10% Kelly (conservative for validation)
 LIVE_ENTRY_PRICE_CAPS: dict[str, float | None] = {
     # Tier 1: fully live — all entries are profitable
     "general":      None,   # All entries profitable, no cap needed
-    "geopolitics":  None,   # All 45 trades profitable (+$1,664)
-    "politics":     None,   # All 32 trades profitable (+$665)
-    # Tier 2: price-gated live — only cheap entries are profitable
-    "sports":       0.10,  # $0-$0.10: +$17.67/trade; $0.35+: -$14.25/trade
-    # Tier 3: paper-only (sample too small or structural losses)
-    "economics":    0.00,   # 19 trades, -$17.72 avg — paper only
-    "technology":   0.00,   # 7 trades, -$22.14 avg — paper only
+    "geopolitics":  None,   # All 45 trades profitable (+$2,856)
+    # Tier 2: paper-only — structural losses despite some whale winners
+    "politics":     0.00,   # 9 trades, -$581 avg -$64 — 3 losses offset 2 wins
+    "economics":    0.00,   # 10 trades, -$408 avg -$41 — consistently losing
+    "technology":   0.00,   # 6 trades, -$625 avg -$104 — sample too small
+    # Tier 3: price-gated — profitable below threshold, losers above
+    "sports":       0.10,  # $0.05-0.10: +$406 avg | $0.35-0.50: -$9.68 avg
 }
 
 # Blocked whale addresses — these whales consistently lose money, never follow them live
