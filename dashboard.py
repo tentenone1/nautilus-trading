@@ -90,11 +90,11 @@ def get_db_stats():
         "top_whales": [], "top_markets": [], "recent_signals": [],
     }
     
-    # 1. Whale stats from Discovery DB (WHALE_DB_PATH uses same path as DB_PATH)
-    WHALE_DB_PATH = DB_PATH
-    if os.path.exists(WHALE_DB_PATH):
+    # 1. Whale stats from Discovery DB
+    whale_db = DB_PATH
+    if os.path.exists(whale_db):
         try:
-            conn = sqlite3.connect(WHALE_DB_PATH)
+            conn = sqlite3.connect(whale_db)
             stats["whale_count"] = conn.execute("SELECT COUNT(*) FROM whales").fetchone()[0]
             stats["active_whales"] = conn.execute("SELECT COUNT(*) FROM whales WHERE alpha_score >= 70").fetchone()[0]
             stats["top_whales"] = conn.execute("SELECT name, alpha_score, pnl, volume, total_trades, tags FROM whales ORDER BY alpha_score DESC LIMIT 10").fetchall()
@@ -102,8 +102,7 @@ def get_db_stats():
         except Exception as e: print(f"[DASH] Whale DB error: {e}")
 
     # 2. Signal stats from Trade DB (which currently holds whale_signals)
-    # Actually whale_signals might be in either. Let's check both for redundancy.
-    active_sig_db = WHALE_DB_PATH if os.path.exists(WHALE_DB_PATH) else DB_PATH
+    active_sig_db = whale_db if os.path.exists(whale_db) else DB_PATH
     try:
         conn = sqlite3.connect(active_sig_db)
         stats["total_signals"] = conn.execute("SELECT COUNT(*) FROM whale_signals").fetchone()[0]
@@ -636,6 +635,7 @@ def api_stream():
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
         },
+    )
 
 
 @app.route("/api/pnl")
