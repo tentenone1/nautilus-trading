@@ -15,7 +15,7 @@ import time
 import os
 import uuid
 import json
-import threading
+import queue
 import pandas as pd
 import requests
 from datetime import datetime, timezone
@@ -305,12 +305,29 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
 def _background_resolution_poll(
     open_positions: dict,
     poller,
+    resolved_queue,
     strategy,
 ) -> None:
-    """Run resolution polling in a background thread. Calls _on_resolution_poll_done on completion."""
+    """Run resolution polling in a background thread.
+
+    Puts resolved instrument keys into resolved_queue (queue.Queue) for the main
+    thread to process. This avoids all shared-state mutation from the background thread.
+    """
     try:
         events = poller.poll_open_positions(open_positions)
-        strategy._on_resolution_poll_done(events)
+        if not events:
+            return
+        for ev in events:
+            strategy.log.info(
+                f"[RESOLUTION] {ev.get('question', '')[:50]} | "
+                f"Winner: {ev.get('winning_outcome', '?')} | "
+                f"Actual P&L: ${ev.get('total_actual_pnl', 0):+.2f} "
+                f"({ev.get('trades_count', 0)} trades)"
+            )
+            for trade in ev.get("trades", []):
+                inst_key = trade.get("inst_key", "")
+                if inst_key:
+                    resolved_queue.put_nowait(inst_key)
     except Exception as e:
         strategy.log.error(f"[RESOLUTION] Background poll failed: {e}")
 
@@ -427,6 +444,7 @@ class WhaleFollower(Strategy):
 
         # Initialize resolution poller for real P&L tracking
         self._resolution_poller = ResolutionPoller(strategy=self)
+        self._resolved_positions_queue: queue.Queue = queue.Queue()
         self._last_resolution_poll: float = 0
         self._resolution_poll_interval: float = 120.0  # Check resolutions every 2 minutes
 
@@ -2403,33 +2421,21 @@ class WhaleFollower(Strategy):
         # Resolution polling — check if tracked open positions' markets have resolved
         if now - self._last_resolution_poll >= self._resolution_poll_interval:
             self._last_resolution_poll = now
-            # Run in background thread to avoid blocking the timer loop (poller has 0.3s sleep per condition)
+            # Poll in background thread, but only enqueue resolved keys (no shared-state mutation)
             t = threading.Thread(
                 target=_background_resolution_poll,
-                args=(self._open_positions, self._resolution_poller, self),
+                args=(self._open_positions, self._resolution_poller, self._resolved_positions_queue, self),
                 daemon=True,
             )
             t.start()
-
-    def _on_resolution_poll_done(self, events: list[dict]) -> None:
-        """Called by background thread when resolution polling completes."""
-        if not events:
-            return
-        for ev in events:
-            self.log.info(
-                f"[RESOLUTION] {ev.get('question', '')[:50]} | "
-                f"Winner: {ev.get('winning_outcome', '?')} | "
-                f"Actual P&L: ${ev.get('total_actual_pnl', 0):+.2f} "
-                f"({ev.get('trades_count', 0)} trades)"
-            )
-            for trade in ev.get("trades", []):
-                inst_key = trade.get("inst_key", "")
-                if inst_key and inst_key in self._open_positions:
-                    try:
-                        inst_id = InstrumentId.from_str(inst_key)
-                        self.exit_position(inst_id, exit_reason="market_resolved")
-                    except Exception as e:
-                        self.log.error(f"[RESOLUTION] Failed to exit: {e}")
+            # Drain queue from main thread (safe — queue.Queue is thread-safe and we own the event loop)
+            while not self._resolved_positions_queue.empty():
+                try:
+                    resolved_key = self._resolved_positions_queue.get_nowait()
+                    inst_id = InstrumentId.from_str(resolved_key)
+                    self.exit_position(inst_id, exit_reason="market_resolved")
+                except Exception as e:
+                    self.log.error(f"[RESOLUTION] Failed to exit queued position: {e}")
 
 
         # P2: Sybil intelligence monitoring (every timer tick)

@@ -217,7 +217,7 @@ def on_signal(
     # ---------------------------------------------------------------------
     if not validate_phase2_signal(
         signal=signal,
-        whale_classification="",
+        whale_classification=get_whale_classification(signal.whale_name),
         log=log,
     ):
         return
