@@ -137,7 +137,11 @@ def check_all_positions(
     for inst_key in expired:
         try:
             inst_id = InstrumentId.from_str(inst_key)
-            pos_info = open_positions.get(inst_key, {})
+        except Exception as e:
+            log.error(f"Failed to parse instrument ID '{inst_key[:50]}...': {e}")
+            continue
+        pos_info = open_positions.get(inst_key, {})
+        try:
             exit_position(
                 config=config,
                 cache=cache,
