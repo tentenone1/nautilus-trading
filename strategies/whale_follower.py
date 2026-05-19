@@ -94,15 +94,15 @@ from strategies.wf_constants import (
     LIQUIDITY_TIER3_MULTIPLIER,
     LIQUIDITY_TIER2_MULTIPLIER,
     SPORTS_KELLY_MULTIPLIER,
-    SPORTS_DAILY_LOSS_LIMIT,
     SPORTS_WHITELIST_PATTERNS,
     SPORTS_OU_BLACKLIST_PATTERNS,
     SPORTS_VS_BLACKLIST_PATTERNS,
     SINGLE_TEAM_PATTERNS,
     MIN_ENTRY_PRICE,
     MIN_CONFIDENCE,
-    PAPER_ONLY_CATEGORIES,
     BLOCKED_CATEGORIES,
+    LIVE_ENTRY_PRICE_CAPS,
+    BLOCKED_WHALE_ADDRESSES,
 )
 from strategies.wf_position_persistence import (
     save_open_positions,
@@ -270,7 +270,7 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
     # Daily loss limit: stop trading if daily loss exceeds this
     daily_loss_limit: float = 10000.0
     # Sports-specific daily loss limit: stop sports trading if sports daily loss exceeds this
-    sports_daily_loss_limit: float = 2000.0
+    sports_daily_loss_limit: float = 2000.0  # DEPRECATED: sports are paper-only, no longer tracked
     min_confidence: float = 0.55
     scan_interval_secs: float = 30.0
     auto_trade: bool = True
@@ -357,9 +357,6 @@ class WhaleFollower(Strategy):
         self._daily_loss_limit: float = self.config.daily_loss_limit  # Stop trading if daily loss exceeds this
         self._daily_loss_breached: bool = False  # Permanently stops trading until next day
         self._kill_switch_breached: bool = False  # Phase 1: stops trading when position limits breached
-        self._sports_daily_pnl: float = 0.0
-        self._sports_daily_pnl_date: str = ""
-        self._sports_daily_loss_breached: bool = False
         self._pending_whales: dict[str, dict] = {}  # client_order_id -> {whale_name, market_title, category}
         self._last_exit_time: dict[str, float] = {}  # inst_id -> timestamp (re-entry cooldown)
         self._last_resolution_check: dict[str, float] = {}  # inst_id -> timestamp (rate-limit API calls)
@@ -393,14 +390,9 @@ class WhaleFollower(Strategy):
         self._daily_pnl = ds["daily_pnl"]
         self._daily_pnl_date = ds["daily_pnl_date"]
         self._daily_loss_breached = ds["daily_loss_breached"]
-        self._sports_daily_pnl = ds["sports_daily_pnl"]
-        self._sports_daily_pnl_date = ds["sports_daily_pnl_date"]
-        self._sports_daily_loss_breached = ds["sports_daily_loss_breached"]
         self.log.info(
             f"Daily state loaded: daily_pnl=${self._daily_pnl:+.2f}, "
-            f"breached={self._daily_loss_breached}, "
-            f"sports_pnl=${self._sports_daily_pnl:+.2f}, "
-            f"sports_breached={self._sports_daily_loss_breached}"
+            f"breached={self._daily_loss_breached}"
         )
 
         if not self.config.instrument_ids:
@@ -793,7 +785,15 @@ class WhaleFollower(Strategy):
             # Final category fallback — never leave as Unknown or empty
             if not category or category == "Unknown":
                 category = "general"
-            paper_trade = 1 if category.lower() in PAPER_ONLY_CATEGORIES else 0
+
+            # Determine if this is a paper trade (mirrors _on_signal routing logic)
+            # paper_trade = 1 if: category is paper-only (price_cap == 0.0)
+            # OR: category has price cap AND entry price exceeds it
+            price_cap = LIVE_ENTRY_PRICE_CAPS.get(category.lower(), None)
+            is_paper_only = (price_cap == 0.0)
+            entry_price = pending.get("entry_price", 0.0) or 0.0
+            is_price_gated = (price_cap is not None and price_cap > 0.0 and entry_price > price_cap)
+            paper_trade = 1 if (is_paper_only or is_price_gated) else 0
 
             import uuid
             trade_id = str(uuid.uuid4())
@@ -1328,38 +1328,62 @@ class WhaleFollower(Strategy):
         mc = getattr(signal, 'market_category', '') or ''
         mc_lower = mc.lower()
 
-        # Hard block for blocked categories
+        # ── Routing: live vs paper vs blocked — segment-level routing ───────
+        # Blocked categories: hard reject
         if mc_lower in BLOCKED_CATEGORIES:
             self.log.info(f"BLOCKED category={mc_lower} | {signal.condition_id[:50]} — rejected")
             return
 
-        # Paper-only categories: block in live mode, allow in paper mode
-        if mc_lower in PAPER_ONLY_CATEGORIES:
-            trading_mode = os.getenv("TRADING_MODE", "")
-            if trading_mode == "live":
-                self.log.info(
-                    f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} — "
-                    f"blocked in live mode, would be sandbox fill"
-                )
-                return
-            # In paper mode: proceed, but track separately (see _record_trade)
+        # Whale address block: these whales consistently lose, never follow live
+        whale_name = getattr(signal, 'whale_name', '') or ''
+        if whale_name in BLOCKED_WHALE_ADDRESSES:
             self.log.info(
-                f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} — "
-                f"sandbox fill (P&L excluded from daily loss limit)"
-            )
-
-        # Sports daily loss breach check
-        if mc_lower == 'sports' and self._sports_daily_loss_breached:
-            self.log.warning(
-                "Sports daily loss limit breached, skipping sports signal execution"
+                f"BLOCKED whale={whale_name} | category={mc_lower} | "
+                f"{signal.condition_id[:50]} — blocked whale address"
             )
             return
 
-        # Sports-specific daily loss limit
-        if mc.lower() == 'sports' and hasattr(self, '_sports_daily_pnl'):
-            if self._sports_daily_pnl <= -SPORTS_DAILY_LOSS_LIMIT:
-                self.log.info(f"Sports daily loss limit breached (-${SPORTS_DAILY_LOSS_LIMIT}), skipping sports signal")
+        # Determine eligibility: live, paper-only, or blocked
+        price_cap = LIVE_ENTRY_PRICE_CAPS.get(mc_lower)
+        trading_mode = os.getenv("TRADING_MODE", "")
+
+        if price_cap == 0.0:
+            # Category is paper-only (no profitable live segment)
+            if trading_mode == "live":
+                self.log.info(
+                    f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} — "
+                    f"live trading blocked for this category"
+                )
                 return
+            self.log.info(
+                f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} — "
+                f"sandbox fill"
+            )
+        elif price_cap is not None:
+            # Price-gated category (e.g. sports > $0.10 = paper)
+            entry_price = getattr(signal, 'target_price', 0.0) or 0.0
+            if entry_price > price_cap:
+                if trading_mode == "live":
+                    self.log.info(
+                        f"PAPER_GATE category={mc_lower} price=${entry_price:.4f} > cap=${price_cap:.2f} | "
+                        f"{signal.condition_id[:50]} — live blocked, paper fill"
+                    )
+                    # Continue to order entry but mark as paper trade
+                else:
+                    self.log.info(
+                        f"PAPER_GATE category={mc_lower} price=${entry_price:.4f} > cap=${price_cap:.2f} | "
+                        f"{signal.condition_id[:50]} — sandbox fill"
+                    )
+            else:
+                self.log.info(
+                    f"LIVE_ELIGIBLE category={mc_lower} price=${entry_price:.4f} <= cap=${price_cap:.2f} | "
+                    f"{signal.condition_id[:50]}"
+                )
+        else:
+            # No cap: always live-eligible
+            self.log.info(
+                f"LIVE_ELIGIBLE category={mc_lower} | {signal.condition_id[:50]}"
+            )
 
         # ── FADE DETECTION: Should this signal be inverted? ──
         is_fade = False
@@ -1960,10 +1984,14 @@ class WhaleFollower(Strategy):
         # ── POSITION CACHE DEDUP: Mark as exited ──
         self._exited_positions.add(inst_key)
         
-        # Update daily P&L (exclude paper-only categories — they don't count toward daily loss limit)
+        # Update daily P&L (exclude paper trades — they don't count toward daily loss limit)
+        # paper_trade = 1 if category is paper-only (price_cap == 0.0) or price-gated and entry > cap
         category = pos_info.get('category', '') or ''
         cat_lower = category.lower()
-        if cat_lower not in PAPER_ONLY_CATEGORIES:
+        price_cap = LIVE_ENTRY_PRICE_CAPS.get(cat_lower, None)
+        entry_price = pos_info.get('entry_price', 0.0) or 0.0
+        is_paper = (price_cap == 0.0) or (price_cap is not None and price_cap > 0.0 and entry_price > price_cap)
+        if not is_paper:
             self._daily_pnl += realized_pnl
             if self._daily_pnl <= -self._daily_loss_limit:
                 self._daily_loss_breached = True
@@ -1972,22 +2000,15 @@ class WhaleFollower(Strategy):
                 )
         else:
             self.log.info(
-                f"PAPER_ONLY P&L excluded from daily limit: category={cat_lower} | "
-                f"pnl=${realized_pnl:+.2f} | cumulative paper_pnl not tracked"
+                f"PAPER P&L excluded from daily limit: category={cat_lower} | "
+                f"price=${entry_price:.4f} | pnl=${realized_pnl:+.2f}",
             )
-
-        # Update sports daily P&L if sports position
-        if cat_lower == 'sports':
-            self._sports_daily_pnl += realized_pnl
 
         # Persist daily state to disk so kill switches survive restarts
         save_daily_state(
             daily_pnl=self._daily_pnl,
             daily_pnl_date=self._daily_pnl_date,
             daily_loss_breached=self._daily_loss_breached,
-            sports_daily_pnl=self._sports_daily_pnl,
-            sports_daily_pnl_date=self._sports_daily_pnl_date,
-            sports_daily_loss_breached=self._sports_daily_loss_breached,
         )
 
         pnl_sign = "+" if realized_pnl >= 0 else ""
@@ -2297,9 +2318,6 @@ class WhaleFollower(Strategy):
             self._daily_pnl = 0.0
             self._daily_pnl_date = today
             self._daily_loss_breached = False  # Reset breach flag for new day
-            self._sports_daily_pnl = 0.0
-            self._sports_daily_pnl_date = today
-            self._sports_daily_loss_breached = False
             return
 
         if self._daily_loss_breached:
@@ -2315,28 +2333,6 @@ class WhaleFollower(Strategy):
                 daily_pnl=self._daily_pnl,
                 daily_pnl_date=self._daily_pnl_date,
                 daily_loss_breached=self._daily_loss_breached,
-                sports_daily_pnl=self._sports_daily_pnl,
-                sports_daily_pnl_date=self._sports_daily_pnl_date,
-                sports_daily_loss_breached=self._sports_daily_loss_breached,
-            )
-            self.exit_all_positions()
-
-        if self._sports_daily_loss_breached:
-            return
-
-        if self._sports_daily_pnl <= -self.config.sports_daily_loss_limit:
-            self.log.error(
-                f"SPORTS DAILY LOSS LIMIT BREACHED: ${self._sports_daily_pnl:,.2f} / -${self.config.sports_daily_loss_limit:,.2f}. "
-                f"Closing all positions and stopping auto-trade."
-            )
-            self._sports_daily_loss_breached = True
-            save_daily_state(
-                daily_pnl=self._daily_pnl,
-                daily_pnl_date=self._daily_pnl_date,
-                daily_loss_breached=self._daily_loss_breached,
-                sports_daily_pnl=self._sports_daily_pnl,
-                sports_daily_pnl_date=self._sports_daily_pnl_date,
-                sports_daily_loss_breached=self._sports_daily_loss_breached,
             )
             self.exit_all_positions()
 
@@ -2348,7 +2344,11 @@ class WhaleFollower(Strategy):
         if pnl == 0:
             return
         self._daily_pnl += pnl
-        self.save_daily_state()
+        save_daily_state(
+            daily_pnl=self._daily_pnl,
+            daily_pnl_date=self._daily_pnl_date,
+            daily_loss_breached=self._daily_loss_breached,
+        )
         self._check_daily_loss_limit()
 
     def _update_gap_state(self, signal) -> None:

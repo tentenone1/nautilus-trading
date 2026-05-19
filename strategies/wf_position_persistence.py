@@ -83,9 +83,9 @@ def save_daily_state(
     daily_pnl: float,
     daily_pnl_date: str,
     daily_loss_breached: bool,
-    sports_daily_pnl: float,
-    sports_daily_pnl_date: str,
-    sports_daily_loss_breached: bool,
+    sports_daily_pnl: float = 0.0,
+    sports_daily_pnl_date: str = "",
+    sports_daily_loss_breached: bool = False,
 ) -> None:
     """Persist daily P&L state to disk so kill switches survive restarts."""
     data = {

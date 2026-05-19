@@ -237,21 +237,29 @@ VALIDATION_MAX_POSITION_USD = 2.0  # $2 max single position (2% of $100)
 VALIDATION_MAX_CONCURRENT = 5  # Max 5 concurrent positions
 VALIDATION_KELLY_FRACTION = 0.10  # 10% Kelly (conservative for validation)
 
-# Live-eligible categories — only these trade with real capital
-ALLOWED_CATEGORIES = frozenset({
-    "general",       # +$33,898 over 545 trades, 62% win rate — the core edge
-    "geopolitics",    # +$1,664 over 45 trades, 33% win rate but big winners
-    "politics",       # +$665 over 32 trades, 31% win rate, positive P&L
+# Routing tiers — entry price caps for live trading (above cap = paper trade)
+# None = no cap (live eligible up to any price)
+LIVE_ENTRY_PRICE_CAPS: dict[str, float | None] = {
+    # Tier 1: fully live — all entries are profitable
+    "general":      None,   # All entries profitable, no cap needed
+    "geopolitics":  None,   # All 45 trades profitable (+$1,664)
+    "politics":     None,   # All 32 trades profitable (+$665)
+    # Tier 2: price-gated live — only cheap entries are profitable
+    "sports":       0.10,  # $0-$0.10: +$17.67/trade; $0.35+: -$14.25/trade
+    # Tier 3: paper-only (sample too small or structural losses)
+    "economics":    0.00,   # 19 trades, -$17.72 avg — paper only
+    "technology":   0.00,   # 7 trades, -$22.14 avg — paper only
+}
+
+# Blocked whale addresses — these whales consistently lose money, never follow them live
+# They can still be paper-tracked for data collection
+BLOCKED_WHALE_ADDRESSES = frozenset({
+    "Hehaj648jeh",                          # 156 crypto trades, -$197 total, avg -$1.26
+    "0x14026373da58fabe45e2bf73a915a5d4b3a6e35b",  # 144 crypto trades, -$197 total, avg -$1.36
 })
 
-# Paper-only categories — sandbox fills, no real capital, no daily loss limit count
-# These collect live-signal data for future re-evaluation (after ~90 days of paper)
-PAPER_ONLY_CATEGORIES = frozenset({
-    "sports",        # -$3,510 over 522 trades — was forced-exit constrained
-    "crypto",        # -$611 over 335 trades, 58% WR but avg entry $0.009
-    "economics",     # -$337 over 19 trades, 32% WR
-    "technology",    # -$155 over 7 trades, 14% WR — sample too small
-})
+# Categories eligible for live trading (any category in LIVE_ENTRY_PRICE_CAPS)
+ALLOWED_CATEGORIES = frozenset({k for k, v in LIVE_ENTRY_PRICE_CAPS.items() if v != 0.0})
 
 # Permanently blocked categories
 BLOCKED_CATEGORIES = frozenset({
