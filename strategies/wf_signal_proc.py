@@ -222,6 +222,31 @@ def on_signal(
     ):
         return
 
+    # ── Sybil Conviction Modulation ──────────────────────────────────────
+    # Adjust confidence/size based on sybil group consensus.
+    # Skip signal entirely if contradicted by strong sybil conviction.
+    from strategies.wf_sybil_modulator import modulate as sybil_modulate
+    sybil = sybil_modulate(signal)
+    if sybil.has_sybil:
+        if sybil.should_skip:
+            log.info(
+                f"SYBIL SKIP {signal.whale_name} | {getattr(signal, 'market_title', '')[:40]} | "
+                f"sybil_yes={sybil.sybil_ratio:.0%} {sybil.decision} | "
+                f"contradicted by sybil group conviction"
+            )
+            return
+        if sybil.confidence_delta != 0.0 or sybil.size_multiplier != 1.0:
+            old_conf = signal.confidence
+            old_size = signal.suggested_size_usd
+            signal.confidence = max(0.0, min(1.0, signal.confidence + sybil.confidence_delta))
+            signal.suggested_size_usd = round(signal.suggested_size_usd * sybil.size_multiplier, 2)
+            log.info(
+                f"SYBIL MODULATE {signal.whale_name} | "
+                f"conf={old_conf:.0%}→{signal.confidence:.0%} "
+                f"size=${old_size:.0f}→${signal.suggested_size_usd:.0f} | "
+                f"sybil_yes={sybil.sybil_ratio:.0%} wallets={sybil.sybil_wallets} {sybil.decision}"
+            )
+
     # P1: Manipulation playbook check
     if _is_manipulation_signal({"whale_name": signal.whale_name, "whale_sig": getattr(signal, "whale_address", "")}):
         log.info(f"REJECT manipulation pattern: {signal.whale_name}")

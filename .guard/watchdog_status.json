@@ -1,6 +1,6 @@
 {
-    "timestamp": "2026-05-15T12:21:01Z",
-    "status": "WARN",
-    "detail": "Process running but systemd=failed",
+    "timestamp": "2026-05-19T09:30:01Z",
+    "status": "OK",
+    "detail": "Running normally",
     "pid_count": 1
 }

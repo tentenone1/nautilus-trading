@@ -7,6 +7,7 @@ Format: {instrument_id_str: {size, entry_price, side, market_title, trade_id, ..
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 POSITIONS_FILE = Path(__file__).parent.parent / "open_positions.json"
@@ -67,6 +68,12 @@ def load_daily_state() -> dict:
     try:
         with open(DAILY_STATE_FILE) as f:
             data = json.load(f)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+        loaded_date = data.get("daily_pnl_date", "")
+        # Reset if date is stale (not today and not yesterday)
+        if loaded_date not in (today, yesterday):
+            data = {k: defaults[k] for k in defaults}
         return {**defaults, **data}
     except (json.JSONDecodeError, IOError):
         return defaults

@@ -138,6 +138,17 @@ def calculate_actual_pnl(
 
     shares = position_size_usd / entry_price
 
+    # Sanity cap: prevent absurdly large share counts from corrupting P&L
+    MAX_SANE_SHARES = 10000
+    if shares > MAX_SANE_SHARES:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"Capped shares from {shares:.0f} to {MAX_SANE_SHARES} "
+            f"(entry_price={entry_price}, position=${position_size_usd})"
+        )
+        shares = MAX_SANE_SHARES
+
     if side.upper() == "SELL":
         # Sell side: we sold YES, so we want YES to lose (NO wins)
         won = (our_token_id != winning_token_id)
@@ -166,11 +177,22 @@ class ResolutionPoller:
     Thread-safe for concurrent DB writes.
     """
 
-    def __init__(self, db_path: Optional[Path] = None):
-        self._db_path = db_path or Path(__file__).parent.parent / "research" / "trades.db"
-        self._checked: dict[str, float] = {}  # condition_id -> timestamp of last check
-        self._lock = threading.Lock()
+    def __init__(
+        self,
+        db_path: Optional[Path] = None,
+        strategy = None,
+    ) -> None:
+        """
+        Args:
+            db_path: Path to trades.db. Defaults to data/trades.db in workspace.
+            strategy: Optional WhaleFollower instance. When provided, calls
+                strategy.add_resolution_pnl() after each resolved position
+                to feed real P&L into the daily kill switch.
+        """
+        self._db_path = db_path or Path(__file__).parent.parent / "data" / "trades.db"
+        self._checked: dict[str, float] = {}
         self._last_poll_time: float = 0
+        self._strategy = strategy
         self._poll_count: int = 0
         self._resolved_count: int = 0
         # Stats for dashboard
@@ -321,6 +343,13 @@ class ResolutionPoller:
                 # Track running totals
                 self.total_real_pnl += actual_pnl
 
+                # Feed real P&L into the daily kill switch
+                if self._strategy is not None and actual_pnl != 0:
+                    try:
+                        self._strategy.add_resolution_pnl(actual_pnl)
+                    except Exception as e:
+                        logger.warning(f"Failed to update strategy P&L: {e}")
+
             # Create a summary event for this resolved condition
             resolution_event = {
                 "condition_id": cond_id,
@@ -413,8 +442,8 @@ class ResolutionPoller:
         try:
             conn = sqlite3.connect(str(self._db_path))
             conn.execute("PRAGMA busy_timeout=5000")
-            # Determine exit_price: 1.0 for profit, 0.0 for loss
-            exit_price = 1.0 if actual_pnl > 0 else 0.0 if actual_pnl < 0 else actual_return
+            # exit_price for binary options: 1.0 if won, 0.0 if lost
+            exit_price = 1.0 if actual_pnl > 0 else 0.0
             conn.execute("""
                 UPDATE trades
                 SET actual_pnl = ?,

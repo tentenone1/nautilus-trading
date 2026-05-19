@@ -44,13 +44,11 @@ class PaperExecClient:
     """
 
     @staticmethod
-    def _resolve_fill_price(self, command) -> float:
+    def _resolve_fill_price(self, command) -> float | None:
         """Determine the best fill price for this order.
 
-        Priority: order price → intended registry → cache → API → $0.50.
-
-        'self' here is the SandboxExecutionClient instance (passed explicitly
-        because this is a static method assigned as a replacement).
+        Priority: order price → intended registry → cache → Polymarket API.
+        Returns None if no real price is available (no fake $0.50 fallback).
         """
         order = command.order
         inst_key = str(command.instrument_id)
@@ -105,7 +103,8 @@ class PaperExecClient:
             except Exception:
                 pass
 
-        # 4. Polymarket API midpoint
+        # 4. Polymarket API midpoint (final source — no fake fallback)
+        mp_price = None
         if fill_price is None:
             try:
                 parts = inst_key.split("-")
@@ -117,15 +116,16 @@ class PaperExecClient:
                         data = json.loads(resp.read().decode())
                     price_str = data.get("midpoint") or data.get("price")
                     if price_str is not None:
-                        fill_price = float(price_str)
+                        mp_price = float(price_str)
             except Exception:
                 pass
 
-        # 5. Last resort
-        if fill_price is None:
-            fill_price = 0.50
+        # No real price available — reject the fill instead of using a fake price
+        if mp_price is None:
+            print(f"[PaperExecClient] No real price for {inst_key[:50]}..., REJECTING fill")
+            return None
 
-        return fill_price
+        return mp_price
 
     @staticmethod
     def submit_order(self, command):
@@ -143,6 +143,9 @@ class PaperExecClient:
 
         # Resolve fill price using priority chain
         fill_price = PaperExecClient._resolve_fill_price(self, command)
+        if fill_price is None:
+            print(f"[PaperExecClient] No real price for {inst_key[:50]}..., skipping fill")
+            return
         print(f"[PaperExecClient] Filling {inst_key[:50]}... at ${fill_price:.4f}")
 
         # Get instrument for precision/currency info

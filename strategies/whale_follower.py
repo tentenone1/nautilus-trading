@@ -15,6 +15,7 @@ import time
 import os
 import uuid
 import json
+import threading
 import pandas as pd
 import requests
 from datetime import datetime, timezone
@@ -62,6 +63,8 @@ try:
 except ImportError as e:
     # Validation modules not available - strategy will work without event logging
     _validation_available = False
+    import sys
+    print(f"WARNING: Validation modules not available: {e}. Event logging disabled.", file=sys.stderr)
     EventType = None
     log_event = None
     TradeContext = None
@@ -234,8 +237,7 @@ STALE_SUBSCRIPTION_TTL_SECS = 3600  # Clean up dynamic subscriptions older than 
 # Resolution timing
 RESOLUTION_EXIT_HOURS = 6  # Exit if market resolves within this many hours
 
-# Sports market timing
-SPORTS_EXIT_HOURS_BEFORE_EVENT = 1  # Exit sports positions this many hours before game
+# Sports market timing — SPORTS_EXIT_HOURS_BEFORE_EVENT imported from wf_constants
 
 # Liquidity tier thresholds (volume + liquidity in USD)
 LIQUIDITY_TIER4_THRESHOLD = 100_000  # Illiquid: reduce to 25% of Kelly
@@ -298,6 +300,19 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
     @property
     def instrument_id(self) -> InstrumentId:
         return self.instrument_ids[0] if self.instrument_ids else None
+
+
+def _background_resolution_poll(
+    open_positions: dict,
+    poller,
+    strategy,
+) -> None:
+    """Run resolution polling in a background thread. Calls _on_resolution_poll_done on completion."""
+    try:
+        events = poller.poll_open_positions(open_positions)
+        strategy._on_resolution_poll_done(events)
+    except Exception as e:
+        strategy.log.error(f"[RESOLUTION] Background poll failed: {e}")
 
 
 class WhaleFollower(Strategy):
@@ -411,7 +426,7 @@ class WhaleFollower(Strategy):
                 self.log.info(f"Intel blacklist: {len(self._intel_blacklist)} whales from intelligence data")
 
         # Initialize resolution poller for real P&L tracking
-        self._resolution_poller = ResolutionPoller()
+        self._resolution_poller = ResolutionPoller(strategy=self)
         self._last_resolution_poll: float = 0
         self._resolution_poll_interval: float = 120.0  # Check resolutions every 2 minutes
 
@@ -766,6 +781,10 @@ class WhaleFollower(Strategy):
             # ── ALWAYS register position for tracking first ──────────────────
             # Position tracking must NOT depend on DB write success.
             # DB write can fail (Bitable down, auth issue) but position still needs tracking.
+            # Reject sybil group signals — they generate phantom positions that never resolve
+            if whale_name.startswith("sybil_"):
+                self.log.warning(f"[POSITION] REJECTED sybil group signal: {whale_name} — group positions are not real Polymarket orders")
+                return
             self._open_positions[str(event.instrument_id)] = {
                 "whale_name": whale_name,
                 "market_title": market_title,
@@ -1448,6 +1467,9 @@ class WhaleFollower(Strategy):
             _validation_snapshot_id=snapshot_id,
         )
 
+        # Update gap monitoring state
+        self._update_gap_state(signal)
+
     def _find_instrument(self, condition_id: str) -> InstrumentId | None:
         """Find the subscribed instrument matching a condition_id."""
         for inst_id in self.config.instrument_ids:
@@ -1921,10 +1943,23 @@ class WhaleFollower(Strategy):
 
     def exit_all_positions(self) -> None:
         """Close ALL open positions (emergency stop or daily loss limit)."""
+        exited = 0
         for inst_id in self.config.instrument_ids:
             open_positions = self.cache.positions_open(instrument_id=inst_id)
             if open_positions and open_positions[0].quantity.as_double() != 0:
                 self.exit_position(inst_id, exit_reason="emergency_exit_all")
+                exited += 1
+
+        # Also close dynamically subscribed instruments
+        if hasattr(self, '_dynamic_subscriptions'):
+            for inst_id_str in list(self._dynamic_subscriptions.keys()):
+                inst_id = InstrumentId.from_str(inst_id_str)
+                pos = self.cache.position(inst_id)
+                if pos and pos.is_open:
+                    self.exit_position(inst_id, exit_reason="emergency_exit_all")
+                    exited += 1
+
+        self.log.warning(f"Emergency exit complete: {exited} positions closed")
 
     def cancel_all_open_orders(self) -> None:
         """Cancel ALL pending open orders (kill switch).
@@ -2248,6 +2283,55 @@ class WhaleFollower(Strategy):
             )
             self.exit_all_positions()
 
+    def add_resolution_pnl(self, pnl: float) -> None:
+        """Called by ResolutionPoller when a market resolves with real P&L.
+
+        Feeds actual (resolution-based) P&L into the daily kill switch tracker.
+        """
+        if pnl == 0:
+            return
+        self._daily_pnl += pnl
+        self.save_daily_state()
+        self._check_daily_loss_limit()
+
+    def _update_gap_state(self, signal) -> None:
+        """Update signal_trade_gap_state.json on every valid signal.
+
+        Increments signal/trade counters, updates timestamps, resets gap counters.
+        Atomic write via temp file + rename.
+        """
+        state_file = Path(__file__).parent.parent / ".signal_trade_gap_state.json"
+        try:
+            if state_file.exists():
+                with open(state_file) as f:
+                    state = json.load(f)
+            else:
+                state = {
+                    "prev_open_count": 0, "stall_start": None,
+                    "consecutive_gaps": 0, "recent_signals": 0,
+                    "latest_signal": None, "recent_trades": 0,
+                    "latest_trade": None, "open_trade_count": 0,
+                }
+        except (FileNotFoundError, json.JSONDecodeError):
+            state = {
+                "prev_open_count": 0, "stall_start": None,
+                "consecutive_gaps": 0, "recent_signals": 0,
+                "latest_signal": None, "recent_trades": 0,
+                "latest_trade": None, "open_trade_count": 0,
+            }
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        state["recent_signals"] = state.get("recent_signals", 0) + 1
+        state["latest_signal"] = now_iso
+        state["recent_trades"] = state.get("recent_trades", 0) + 1
+        state["latest_trade"] = now_iso
+        state["consecutive_gaps"] = 0
+
+        tmp = state_file.with_suffix(".tmp")
+        with open(tmp, "w") as f:
+            json.dump(state, f, indent=2)
+        tmp.rename(state_file)
+
     def _on_exit_timer(self, timer_name: str = None) -> None:
         """Timer callback — fires every 30s independently of quote ticks.
         
@@ -2275,8 +2359,10 @@ class WhaleFollower(Strategy):
         # Autoresearch LLM signal bridge — check for model-generated trade recommendations
         self._check_autoresearch_signals()
         
-        # Sybil meta-whale signal bridge — check for sybil group fade/follow signals
-        self._check_sybil_signals()
+        # Sybil meta-whale signal bridge — DISABLED 2026-05-19
+        # Sybil signals are now used as conviction modulator only (wf_sybil_modulator.py).
+        # The standalone sybil trade execution path was removed — it generated phantom positions.
+        # self._check_sybil_signals()
         
         # Memory pressure check - graceful restart before OOM
         # Cross-platform: resource.getrusage works on macOS and Linux
@@ -2291,7 +2377,8 @@ class WhaleFollower(Strategy):
                 rss_mb = rss_bytes / 1024
 
             if rss_mb > MEMORY_PRESSURE_MB:
-                self.log.warning(f"MEMORY PRESSURE: {rss_mb:.0f}MB RSS - initiating graceful shutdown")
+                self.log.warning(f"MEMORY PRESSURE: {rss_mb:.0f}MB RSS - closing all positions before shutdown")
+                self.exit_all_positions()
                 self.stop()
         except Exception:
             pass
@@ -2314,35 +2401,35 @@ class WhaleFollower(Strategy):
         # else: non-Linux host — memory monitoring not available, skip
         
         # Resolution polling — check if tracked open positions' markets have resolved
-        # Updates trades.db with actual P&L when markets resolve
         if now - self._last_resolution_poll >= self._resolution_poll_interval:
-            try:
-                events = self._resolution_poller.poll_open_positions(self._open_positions)
-                if events:
-                    for ev in events:
-                        self.log.info(
-                            f"[RESOLUTION] {ev.get('question', '')[:50]} | "
-                            f"Winner: {ev.get('winning_outcome', '?')} | "
-                            f"Actual P&L: ${ev.get('total_actual_pnl', 0):+.2f} "
-                            f"({ev.get('trades_count', 0)} trades)"
-                        )
-                        # If position resolved and we're still holding, exit at resolution price
-                        for trade in ev.get("trades", []):
-                            inst_key = trade.get("inst_key", "")
-                            if inst_key and inst_key in self._open_positions:
-                                try:
-                                    inst_id = InstrumentId.from_str(inst_key)
-                                    self.exit_position(inst_id, exit_reason="market_resolved")
-                                    self.log.info(
-                                        f"[RESOLUTION] Exited resolved position: {inst_key[:50]}..."
-                                    )
-                                except Exception as e:
-                                    self.log.error(
-                                        f"[RESOLUTION] Failed to exit resolved position: {e}"
-                                    )
-            except Exception as e:
-                self.log.error(f"Resolution poll error: {e}")
             self._last_resolution_poll = now
+            # Run in background thread to avoid blocking the timer loop (poller has 0.3s sleep per condition)
+            t = threading.Thread(
+                target=_background_resolution_poll,
+                args=(self._open_positions, self._resolution_poller, self),
+                daemon=True,
+            )
+            t.start()
+
+    def _on_resolution_poll_done(self, events: list[dict]) -> None:
+        """Called by background thread when resolution polling completes."""
+        if not events:
+            return
+        for ev in events:
+            self.log.info(
+                f"[RESOLUTION] {ev.get('question', '')[:50]} | "
+                f"Winner: {ev.get('winning_outcome', '?')} | "
+                f"Actual P&L: ${ev.get('total_actual_pnl', 0):+.2f} "
+                f"({ev.get('trades_count', 0)} trades)"
+            )
+            for trade in ev.get("trades", []):
+                inst_key = trade.get("inst_key", "")
+                if inst_key and inst_key in self._open_positions:
+                    try:
+                        inst_id = InstrumentId.from_str(inst_key)
+                        self.exit_position(inst_id, exit_reason="market_resolved")
+                    except Exception as e:
+                        self.log.error(f"[RESOLUTION] Failed to exit: {e}")
 
 
         # P2: Sybil intelligence monitoring (every timer tick)
@@ -2422,163 +2509,16 @@ class WhaleFollower(Strategy):
             self.log.error(f"Autoresearch signal check failed: {e}")
 
     def _check_sybil_signals(self) -> None:
-        """Poll sybil signal queue for meta-whale fade/follow recommendations.
-        
-        Full pipeline: Decay filter → Dedup filter → Price validation → 
-        Confidence scaling → _on_signal(). Clears queue after processing.
+        """DISABLED 2026-05-19.
+
+        Sybil group signals are no longer executed as standalone trades.
+        They are now used as conviction modulators only — see wf_sybil_modulator.py.
+        The sybil signal queue (research/sybil_signal_queue.json) is still populated
+        by the external aggregator cron; this method just no-ops to keep the
+        call site intact and avoid AttributeError if anything references it.
         """
-        queue_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "sybil_signal_queue.json")
-        if not os.path.exists(queue_path):
-            return
-        try:
-            with open(queue_path) as f:
-                data = json.load(f)
-            signals = data.get("signals", []) if isinstance(data, dict) else []
-            if not signals:
-                return
-            
-            now = time.time()
-            total_in = len(signals)
-            
-            # Step 1: Signal Decay — filter out expired signals by age
-            active_signals = []
-            decayed = 0
-            for s in signals:
-                gen_at_str = s.get("generated_at", "")
-                if not gen_at_str:
-                    decayed += 1
-                    continue
-                try:
-                    gen_ts = datetime.fromisoformat(gen_at_str.replace("Z", "+00:00")).timestamp()
-                except (ValueError, TypeError):
-                    decayed += 1
-                    continue
-                age = now - gen_ts
-                title = s.get("market_title", "").lower()
-                is_sports = any(kw in title for kw in ["nfl", "nba", "mlb", "nhl", "ncaa", "soccer", "ufc", "f1"])
-                ttl = SYBIL_SPORTS_SIGNAL_TTL_SECS if is_sports else SYBIL_SIGNAL_TTL_SECS
-                if age > ttl:
-                    decayed += 1
-                    continue
-                active_signals.append(s)
-            
-            if not active_signals:
-                with open(queue_path, "w") as f:
-                    json.dump({"generated_at": "", "signal_count": 0, "signals": []}, f)
-                if decayed:
-                    self.log.info(f"Sybil signals: {decayed} expired, none remaining")
-                return
-            
-            # Step 2: Dedup — file-based state tracking
-            dedup_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "sybil_signal_dedup.json")
-            dedup_state: dict[str, float] = {}
-            try:
-                if os.path.exists(dedup_path):
-                    with open(dedup_path) as f:
-                        dedup_state = json.load(f)
-                    cutoff = now - SYBIL_DEDUP_TTL_SECS
-                    dedup_state = {k: v for k, v in dedup_state.items() if isinstance(v, (int, float)) and v >= cutoff}
-            except Exception:
-                dedup_state = {}
-            
-            deduped = 0
-            new_dedup: dict[str, float] = {}
-            for s in active_signals:
-                dk = f"{s.get('condition_id', '')}|{s.get('signal_type', '')}|{s.get('group_id', '')}"
-                if dk in dedup_state:
-                    deduped += 1
-                    continue
-                new_dedup[dk] = now
-            
-            if not new_dedup:
-                with open(queue_path, "w") as f:
-                    json.dump({"generated_at": "", "signal_count": 0, "signals": []}, f)
-                if deduped:
-                    self.log.info(f"Sybil signals: {deduped} deduped, none new")
-                return
-            
-            # Persist dedup state
-            dedup_state.update(new_dedup)
-            try:
-                with open(dedup_path, "w") as f:
-                    json.dump(dedup_state, f)
-            except Exception as e:
-                self.log.error(f"Sybil dedup state write failed: {e}")
-            
-            # Clear queue — done before processing to prevent crash duplication
-            with open(queue_path, "w") as f:
-                json.dump({"generated_at": "", "signal_count": 0, "signals": []}, f)
-            
-            # Steps 3-4: Process each surviving signal with price + confidence checks
-            processed = 0
-            price_rejected = 0
-            low_conf_rejected = 0
-            
-            for s in active_signals:
-                dk = f"{s.get('condition_id', '')}|{s.get('signal_type', '')}|{s.get('group_id', '')}"
-                if dk not in new_dedup:
-                    continue  # Was in dedup_state from prior run
-                
-                confidence = s.get("confidence", 0.5)
-                if confidence < SYBIL_CONFIDENCE_MIN:
-                    low_conf_rejected += 1
-                    continue
-                
-                # Price validation
-                price_valid, price_reason = self._validate_sybil_signal_price(s)
-                if not price_valid:
-                    price_rejected += 1
-                    self.log.info(f"Sybil price skip: {s.get('market_title', '')[:50]} — {price_reason}")
-                    continue
-                
-                # Map side
-                sybil_side = s.get("side", "BUY YES")
-                if "BUY YES" in sybil_side.upper():
-                    side = "buy"
-                    outcome = "Yes"
-                else:
-                    side = "buy"
-                    outcome = "No"
-                
-                # Confidence-based size scaling
-                exposure = s.get("total_exposure_usd", 0)
-                signal_type = s.get("signal_type", "")
-                base_pct = SYBIL_BASE_SIZE_PCT.get(signal_type, 0.10)
-                multiplier = confidence / SYBIL_CONFIDENCE_BASELINE
-                multiplier = max(SYBIL_SIZE_MIN_MULTIPLIER, min(SYBIL_SIZE_MAX_MULTIPLIER, multiplier))
-                suggested_size = min(exposure * base_pct * multiplier, 5000)
-                
-                group_id = s.get("group_id", "unknown")
-                signal_obj = WhaleSignal(
-                    signal_type=WhaleSignalType.LARGE_POSITION,
-                    condition_id=s.get("condition_id", ""),
-                    token_id="",
-                    outcome=outcome,
-                    side=side,
-                    confidence=confidence,
-                    target_price=0.5,
-                    suggested_size_usd=suggested_size,
-                    whale_name=f"sybil_meta_{group_id}",
-                    whale_roi=0.0,
-                    timestamp=time.time(),
-                    reason=s.get("reason", f"Sybil {group_id} signal"),
-                    market_title=s.get("market_title", ""),
-                    market_category="",
-                    whale_address="",
-                    edge_score=confidence * 10,
-                )
-                self._on_signal(signal_obj)
-                processed += 1
-            
-            if processed or decayed or deduped or price_rejected or low_conf_rejected:
-                self.log.info(
-                    f"Sybil signals: {total_in} in → {processed} executed, "
-                    f"{decayed} decayed, {deduped} deduped, "
-                    f"{price_rejected} price-rejected, {low_conf_rejected} low-conf"
-                )
-        except Exception as e:
-            self.log.error(f"Sybil signal check failed: {e}")
-    
+        pass
+
     def _validate_sybil_signal_price(self, signal: dict) -> tuple[bool, str]:
         """Check current market midpoint hasn't moved against the signal direction.
         
@@ -2728,25 +2668,17 @@ class WhaleFollower(Strategy):
         }
 
     def _should_exit_for_sports(self, instrument_id) -> bool:
-        """Check if a sports position should be exited (game imminent or in-play)."""
         is_sports, sport_type = self._is_sports_market(instrument_id)
         if not is_sports:
             return False
-        
+
         timing = self._get_market_event_time(instrument_id)
-        
-        # Exit if game is within SPORTS_EXIT_HOURS_BEFORE_EVENT hour (prices will freeze during play)
-        if timing["hours_until_event"] is not None and 0 < timing["hours_until_event"] < SPORTS_EXIT_HOURS_BEFORE_EVENT:
-            self.log.info(
-                f"Sports exit: {sport_type} market resolving in {timing['hours_until_event']:.1f}h"
-            )
-            return True
-        
-        # Exit if market is in-play (prices frozen, can't manage risk)
+
+        # Exit if market is in-play (prices frozen, cannot manage risk)
         if timing["is_in_play"]:
             self.log.info(f"Sports exit: {sport_type} market is in-play (prices frozen)")
             return True
-        
+
         return False
 
     def _adjust_size_for_liquidity(self, size_usd: float, instrument_id) -> float:

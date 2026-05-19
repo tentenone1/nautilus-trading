@@ -90,7 +90,8 @@ def get_db_stats():
         "top_whales": [], "top_markets": [], "recent_signals": [],
     }
     
-    # 1. Whale stats from Discovery DB
+    # 1. Whale stats from Discovery DB (WHALE_DB_PATH uses same path as DB_PATH)
+    WHALE_DB_PATH = DB_PATH
     if os.path.exists(WHALE_DB_PATH):
         try:
             conn = sqlite3.connect(WHALE_DB_PATH)
