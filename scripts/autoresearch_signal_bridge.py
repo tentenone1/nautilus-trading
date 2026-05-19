@@ -28,6 +28,17 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RECS_FILE = os.path.join(BASE_DIR, "research", "trade_recommendations.json")
 QUEUE_FILE = os.path.join(BASE_DIR, "research", "autoresearch_signal_queue.json")
 STATE_FILE = os.path.join(BASE_DIR, "research", "autoresearch_bridge_state.json")
+LOG_FILE = os.path.join(BASE_DIR, "logs", "autoresearch-signal-bridge.log")
+
+def log(msg: str) -> None:
+    ts = datetime.now(timezone.utc).isoformat()
+    line = f"[autoresearch-bridge] {ts} {msg}"
+    print(line, flush=True)
+    try:
+        with open(LOG_FILE, "a") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
 CLOB_MARKET_URL = "https://clob.polymarket.com/markets/{}"
 
 # ─── Quality Gates ─────────────────────────────────────────────────────────────
@@ -128,15 +139,12 @@ def make_signal_key(rec: dict) -> str:
 
 
 def main() -> int:
-    print(
-        f"[autoresearch-bridge] Starting at {datetime.now(timezone.utc).isoformat()}",
-        flush=True,
-    )
+    log(f"Starting at {datetime.now(timezone.utc).isoformat()}")
 
     # Load state and recommendations
     state = load_state()
     if not os.path.exists(RECS_FILE):
-        print(f"[autoresearch-bridge] No recommendations file at {RECS_FILE}", flush=True)
+        log(f"No recommendations file at {RECS_FILE}")
         return 0
 
     with open(RECS_FILE) as f:
@@ -151,13 +159,10 @@ def main() -> int:
     new_recs = [r for r in buy_recs if make_signal_key(r) not in state]
 
     if not new_recs:
-        print("[autoresearch-bridge] No new BUY recommendations to process", flush=True)
+        log("No new BUY recommendations to process")
         return 0
 
-    print(
-        f"[autoresearch-bridge] {len(new_recs)} new BUY recommendations of {len(buy_recs)} total",
-        flush=True,
-    )
+    log(f"{len(new_recs)} new BUY recommendations of {len(buy_recs)} total")
 
     # Load existing queue
     queue = load_queue()
@@ -176,10 +181,7 @@ def main() -> int:
         hold_hours = rec.get("hold_hours", 24)
 
         if not cid:
-            print(
-                f"  ⚠️  Skipping '{market[:50]}...' — no condition_id",
-                flush=True,
-            )
+            log(f"Skipping '{market[:50]}...' — no condition_id")
             skipped += 1
             state[make_signal_key(rec)] = time.time()
             continue
@@ -187,10 +189,7 @@ def main() -> int:
         # Resolve YES token from Polymarket API
         token_info = resolve_yes_token(cid)
         if token_info is None:
-            print(
-                f"  ⚠️  Skipping '{market[:50]}...' — could not resolve token (inactive?)",
-                flush=True,
-            )
+            log(f"Skipping '{market[:50]}...' — could not resolve token (inactive?)")
             skipped += 1
             state[make_signal_key(rec)] = time.time()
             continue
@@ -220,10 +219,7 @@ def main() -> int:
         state[make_signal_key(rec)] = time.time()
         processed += 1
 
-        print(
-            f"  ✅ {market[:50]:50s} | ${entry_price:.2f} | conf={confidence:.0%}",
-            flush=True,
-        )
+        log(f"✅ {market[:50]:50s} | ${entry_price:.2f} | conf={confidence:.0%}")
 
     # Write updated queue
     # Keep only last 100 signals to prevent unbounded growth
@@ -231,14 +227,26 @@ def main() -> int:
     save_queue(queue)
     save_state(state)
 
-    print(
-        f"[autoresearch-bridge] Done. {processed} queued, {skipped} skipped, "
-        f"{len(queue)} total in queue",
-        flush=True,
-    )
+    log(f"Done. {processed} queued, {skipped} skipped, {len(queue)} total in queue")
 
     return processed
 
 
+def run_loop() -> None:
+    """Continuous polling loop."""
+    INTERVAL_SECS = 60
+    while True:
+        try:
+            result = main()
+            if result < 0:
+                # Negative return = fatal error, break
+                break
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            log(f"Unexpected error: {e}")
+        time.sleep(INTERVAL_SECS)
+
+
 if __name__ == "__main__":
-    sys.exit(0 if main() >= 0 else 1)
+    run_loop()
