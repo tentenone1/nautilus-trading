@@ -53,19 +53,46 @@ def transform_for_autoresearch(trades):
         for t in trades
     ]
 
+def run_whale_perf_updater():
+    """Run the whale performance updater to close the feedback loop.
+
+    Imports and runs scripts/whale_perf_updater.py to update tier_assignments.json
+    based on resolved trades in trades.db.
+    """
+    import subprocess, sys
+    updater = Path(__file__).resolve().parent.parent / "scripts" / "whale_perf_updater.py"
+    try:
+        result = subprocess.run(
+            [sys.executable, str(updater)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            print(f"  → Whale perf updated")
+        else:
+            print(f"  → Whale perf update warning: {result.stderr[:200]}")
+    except Exception as e:
+        print(f"  → Whale perf update skipped: {e}")
+
+
 def main():
     """Run Autoresearch bridge logic."""
     OUTPUT_DIR.mkdir(exist_ok=True)
     config = load_config()
-    
+
     trades = fetch_trades_last_5min()
     transformed = transform_for_autoresearch(trades)
-    
+
     output_file = OUTPUT_DIR / f"bridge_data_{int(time.time())}.json"
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         json.dump(transformed, f, indent=2)
-    
+
     print(f"Autoresearch bridge complete: {len(transformed)} trades -> {output_file}")
+
+    # Close the feedback loop: update whale tier assignments from resolved trades
+    run_whale_perf_updater()
+
 
 if __name__ == "__main__":
     main()

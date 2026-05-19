@@ -1,0 +1,17 @@
+source:
+  system: "nautilus-trading"
+  data_feed: "/home/elon-1/workspace/nautilus-trading/data/trades.db"
+  api_endpoint: "http://localhost:8502/api/data"
+destination:
+  # No external endpoint — bridge data feeds back into the execution pipeline
+  # via whale_perf_updater.py which updates tier_assignments.json
+  # This closes the loop: trade outcomes → whale Kelly/precision tiers
+  service: "internal-feedback-loop"
+credentials:
+  api_key: "nrt-autoresearch-bridge-2026"
+parameters:
+  refresh_interval: 60
+  data_format: "json"
+executor:
+  mode: "poll"
+  polling_frequency: 300
