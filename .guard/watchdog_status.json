@@ -1,6 +1,6 @@
 {
-    "timestamp": "2026-05-19T09:30:01Z",
-    "status": "OK",
-    "detail": "Running normally",
+    "timestamp": "2026-05-19T09:40:01Z",
+    "status": "WARN",
+    "detail": "Process running but systemd=deactivating",
     "pid_count": 1
 }

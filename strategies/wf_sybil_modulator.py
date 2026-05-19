@@ -38,9 +38,6 @@ SYBIL_BOOST_ADD = 0.10           # Agree: confidence +10 pp
 SYBIL_PENALTY_MULTIPLIER = 0.85  # Weak: size × 0.85
 SYBIL_PENALTY_ADD = -0.05        # Weak: confidence −5 pp
 
-# Cache freshness
-_CACHE_MAX_AGE_SECS = 600.0  # Re-read file every 10 min
-
 
 @dataclass(frozen=True)
 class SybilModulation:

@@ -1156,7 +1156,7 @@ class WhaleFollower(Strategy):
             self.log.warning("Whale API circuit breaker OPEN — skipping LLM scoring")
             return 5
         except Exception as e:
-            self.log.warning(f"LLM score failed: {e}")
+            self.log.info(f"[LLM] Scoring failed for {whale}: {e} — using neutral score")
             return 5
 
     def _on_signal(self, signal: WhaleSignal) -> None:
