@@ -1758,21 +1758,23 @@ class WhaleFollower(Strategy):
                 f"enter_position called with empty whale_name for {market_title[:40]} "
                 f"(inst={inst_id[:50]}...) - trade will be stored as 'unknown'"
             )
-        if whale_name:
-            self._pending_whales[str(order.client_order_id)] = {
-                "whale_name": whale_name,
-                "market_title": market_title,
-                "category": market_category,
-                "whale_address": whale_address,
-                "edge_score": edge_score,
-                "confidence": confidence,
-                "entry_reason": entry_reason,
-                "kelly_fraction": self.config.kelly_fraction,
-                "entry_price": price,
-                "is_fade": is_fade,
-                "_validation_signal_id": _validation_signal_id,
-                "_validation_snapshot_id": _validation_snapshot_id,
-            }
+        # Ensure pending metadata is always recorded for the fill handler.
+        # Fallback to a generic whale name if missing to avoid losing position tracking.
+        pending_name = whale_name if whale_name else f"unknown_whale_{uuid.uuid4().hex[:8]}"
+        self._pending_whales[str(order.client_order_id)] = {
+            "whale_name": pending_name,
+            "market_title": market_title,
+            "category": market_category,
+            "whale_address": whale_address,
+            "edge_score": edge_score,
+            "confidence": confidence,
+            "entry_reason": entry_reason,
+            "kelly_fraction": self.config.kelly_fraction,
+            "entry_price": price,
+            "is_fade": is_fade,
+            "_validation_signal_id": _validation_signal_id,
+            "_validation_snapshot_id": _validation_snapshot_id,
+        }
         # Register intended price for PaperExecClient to use at fill time
         from components.paper_execution import set_fill_price
         set_fill_price(str(inst_id), price)
