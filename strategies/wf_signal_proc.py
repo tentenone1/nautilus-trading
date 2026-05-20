@@ -203,13 +203,22 @@ def on_signal(
 
     # ── General Category — Heavily Restricted ───────────────────────────
     # General has 95 trades, -$527, PF 0.46: winning trades but $27 avg loss vs $6 avg win
-    # Apply strict edge filter to salvage what edge exists
+    # Apply strict edge filter AND minimum whale size filter
     mc = getattr(signal, "market_category", "") or ""
     if mc.lower() == "general":
         if edge_val < 0.25:
             log.info(
                 f"REJECT general below edge threshold: {signal.whale_name} | "
                 f"edge={edge_val:.2f} < 0.25 | "
+                f"market={getattr(signal, 'market_title', '')[:40]}"
+            )
+            return
+        # $5K minimum whale position size (DeepSeek V4 Pro recommendation)
+        whale_size = getattr(signal, "suggested_size_usd", 0) or 0
+        if whale_size < 5000:
+            log.info(
+                f"REJECT general below whale size threshold: {signal.whale_name} | "
+                f"whale_size=${whale_size:.0f} < $5,000 | "
                 f"market={getattr(signal, 'market_title', '')[:40]}"
             )
             return
