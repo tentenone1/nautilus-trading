@@ -76,12 +76,6 @@ def kelly_size(
     # Sports markets: apply halved Kelly multiplier (38.6% WR vs 55% breakeven)
     if market_category.lower() == "sports":
         kelly_fraction *= SPORTS_KELLY_MULTIPLIER
-    # Crypto: cap Kelly at 15% (high volatility, 39% market-resolved loss rate)
-    elif market_category.lower() == "crypto":
-        kelly_fraction = min(kelly_fraction, 0.15)
-    # Geopolitics: cap Kelly at 10% (small sample, best avg win but low volume)
-    elif market_category.lower() == "geopolitics":
-        kelly_fraction = min(kelly_fraction, 0.10)
 
     # Base fractional Kelly from config
     base_size = effective_bankroll * kelly * kelly_fraction

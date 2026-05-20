@@ -85,10 +85,6 @@ WHALE_BLACKLIST = frozenset({
     "pilotlady",        # entity cluster — skilled_human
     "trade-via-Gravia",        # entity cluster — skilled_human
     "autoresearch_llm",  # entity cluster — degenerate_human
-    "Hehaj648jeh",       # entity cluster — mixed_entity
-    "phonesculptor",    # entity cluster — mixed_entity
-    "snowleopard1",     # entity cluster — mixed_entity
-    "sybil_group_1",    # entity cluster — degenerate_human
 })
 
 SPORTS_WHALE_BLACKLIST = frozenset({
@@ -266,7 +262,6 @@ BLOCKED_CATEGORIES = frozenset({
     "entertainment", # No edge data, unpredictable outcomes
     "finance",       # Low signal quality, no live track record
     "unknown",       # Unclassified markets
-    "economics",     # PF 0.03, -$388 from 9 trades — no parameter saves this
 })
 
 # Whale type whitelist — only follow proven whale classifications

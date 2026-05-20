@@ -16,7 +16,6 @@ import os
 import uuid
 import json
 import queue
-import threading
 import pandas as pd
 import requests
 from datetime import datetime, timezone
@@ -1302,14 +1301,7 @@ class WhaleFollower(Strategy):
 
         # LLM signal quality scoring (1700 Qwen3.5-9B, ~0.3s)
         llm_score = self._llm_score_signal(signal)
-        # The original threshold was 4/10, meaning a score of 3 or lower would
-        # trigger a full rejection. The logic unintentionally filtered out
-        # legitimate high‑confidence signals (e.g., 75% confidence) that the
-        # MiniMax scoring model sometimes rates as 3. To preserve
-        # high‑confidence trade ideas while still rejecting genuinely low
-        # quality signals, we now reject only when the score is *strictly*
-        # less than 3. This effectively allows a score of 3/10 to pass.
-        if llm_score < 3:
+        if llm_score < 4:
             self.log.info(f"REJECT LLM score={llm_score}/10: {signal.whale_name}")
             return
         self.log.info(f"LLM score={llm_score}/10: {signal.whale_name} | market={getattr(signal, 'market_title', '')[:40]}")
@@ -2216,13 +2208,8 @@ class WhaleFollower(Strategy):
                 #       not for exit triggers.
                 position_edge = pos_info.get("edge_score", 0.0) or 0.0
 
-                # Compute P&L % for pre-resolution stop-loss (same scope as position_edge)
-                entry_price = pos_info.get("entry_price", 0.0)
-                if entry_price > 0:
-                    pnl_pct = ((mid - entry_price) / entry_price) if mid > 0 else 0.0
-                else:
-                    pnl_pct = 0.0
-                market_category = pos_info.get("market_category", "")
+                # Get position side from stored info (default BUY for safety)
+                side = pos_info.get("side", "BUY")
 
                 # Certainty exit: if price strongly indicates the outcome
                 if side == "BUY":
@@ -2275,8 +2262,7 @@ class WhaleFollower(Strategy):
                             )
                     
                     # Resolution exit check — exit if market resolves within 6 hours
-                    # Also applies pre-resolution stop-loss for crypto positions (P&L < -20%)
-                    if self._should_exit_for_resolution(inst_id, pnl_pct=pnl_pct, market_category=market_category):
+                    if self._should_exit_for_resolution(inst_id):
                         self.log.info(f"RESOLUTION EXIT {inst_id}: market resolving soon")
                         self.exit_position(inst_id, exit_reason="resolution")
                         continue
@@ -2295,8 +2281,8 @@ class WhaleFollower(Strategy):
                 )
                 continue
 
-    def _should_exit_for_resolution(self, instrument_id: InstrumentId, pnl_pct: float = 0.0, market_category: str = "") -> bool:
-        """Check if the market for this instrument resolves within RESOLUTION_EXIT_HOURS hours and apply P&L check."""
+    def _should_exit_for_resolution(self, instrument_id: InstrumentId) -> bool:
+        """Check if the market for this instrument resolves within RESOLUTION_EXIT_HOURS hours."""
         try:
             # Extract condition ID from instrument
             cond_id = str(instrument_id).split("-")[0]
@@ -2313,10 +2299,6 @@ class WhaleFollower(Strategy):
                     end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
                     hours_left = (end_dt - datetime.now(timezone.utc)).total_seconds() / 3600
                     if 0 < hours_left < RESOLUTION_EXIT_HOURS:
-                        # Pre-resolution stop-loss check for crypto markets
-                        if pnl_pct < -0.20 and market_category.lower() == "crypto":
-                            self.log.info(f"PRE-RESOLUTION STOP-LOSS: {cond_id[:16]}... pnl={pnl_pct:.1%}, exiting early")
-                            return True
                         return True
                     # Exit if market has already ended (hours_left <= 0 = resolved/expired)
                     if hours_left <= 0:
