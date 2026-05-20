@@ -2313,8 +2313,9 @@ class WhaleFollower(Strategy):
                     end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
                     hours_left = (end_dt - datetime.now(timezone.utc)).total_seconds() / 3600
                     if 0 < hours_left < RESOLUTION_EXIT_HOURS:
-                        # Pre-resolution stop-loss check for crypto markets
-                        if pnl_pct < -0.20 and market_category.lower() == "crypto":
+                        # Pre-resolution stop-loss: apply to all categories
+                        # P&L < -20% within 48h of resolution = unlikely to recover
+                        if pnl_pct < -0.20:
                             self.log.info(f"PRE-RESOLUTION STOP-LOSS: {cond_id[:16]}... pnl={pnl_pct:.1%}, exiting early")
                             return True
                         return True
