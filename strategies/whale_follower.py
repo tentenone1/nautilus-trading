@@ -2505,10 +2505,9 @@ class WhaleFollower(Strategy):
         # Autoresearch LLM signal bridge — check for model-generated trade recommendations
         self._check_autoresearch_signals()
         
-        # Sybil meta-whale signal bridge — DISABLED 2026-05-19
-        # Sybil signals are now used as conviction modulator only (wf_sybil_modulator.py).
-        # The standalone sybil trade execution path was removed — it generated phantom positions.
-        # self._check_sybil_signals()
+        # Sybil meta-whale signal bridge — conservative integration
+        # Applies 65-72% confidence filter + $100 max position
+        self._check_sybil_signals()
         
         # Memory pressure check - graceful restart before OOM
         # Cross-platform: resource.getrusage works on macOS and Linux
@@ -2643,15 +2642,69 @@ class WhaleFollower(Strategy):
             self.log.error(f"Autoresearch signal check failed: {e}")
 
     def _check_sybil_signals(self) -> None:
-        """DISABLED 2026-05-19.
-
-        Sybil group signals are no longer executed as standalone trades.
-        They are now used as conviction modulators only — see wf_sybil_modulator.py.
-        The sybil signal queue (research/sybil_signal_queue.json) is still populated
-        by the external aggregator cron; this method just no-ops to keep the
-        call site intact and avoid AttributeError if anything references it.
+        """Poll sybil signal queue — conservative integration.
+        
+        Filters: confidence 0.65-0.72 (Tony's comfort zone), max $100 position.
+        Clears queue after processing to prevent re-execution on crash.
         """
-        pass
+        queue_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "sybil_signal_queue.json")
+        if not os.path.exists(queue_path):
+            return
+        try:
+            with open(queue_path) as f:
+                data = json.load(f)
+            signals = data.get("signals", []) if isinstance(data, dict) else []
+            if not signals:
+                return
+            # Clear queue immediately to prevent re-processing on crash
+            with open(queue_path, "w") as f:
+                json.dump({"generated_at": "", "signal_count": 0, "signals": []}, f)
+
+            processed = 0
+            for s in signals:
+                confidence = s.get("confidence", 0.5)
+                # ── Confidence filter: only 65-72% zone ──
+                if confidence < 0.65 or confidence > 0.72:
+                    self.log.info(f"Sybil signal skipped — confidence {confidence:.2f} outside 0.65-0.72 zone | {s.get('market_title','')}")
+                    continue
+
+                # Map side
+                sybil_side = s.get("side", "BUY YES")
+                if "BUY YES" in sybil_side.upper():
+                    side, outcome = "buy", "Yes"
+                elif "BUY NO" in sybil_side.upper():
+                    side, outcome = "buy", "No"
+                else:
+                    side, outcome = "buy", "Yes"
+
+                # ── Position sizing: max $100 ──
+                suggested_size = min(100.0, s.get("total_exposure_usd", 0) * 0.01)
+
+                group_id = s.get("group_id", "unknown")
+                signal_obj = WhaleSignal(
+                    signal_type=WhaleSignalType.LARGE_POSITION,
+                    condition_id=s.get("condition_id", ""),
+                    token_id="",
+                    outcome=outcome,
+                    side=side,
+                    confidence=confidence,
+                    target_price=0.5,
+                    suggested_size_usd=suggested_size,
+                    whale_name=f"sybil_meta_{group_id}",
+                    whale_roi=0.0,
+                    timestamp=time.time(),
+                    reason=s.get("reason", f"Sybil {group_id} signal"),
+                    market_title=s.get("market_title", ""),
+                    market_category="",
+                    whale_address="",
+                    edge_score=confidence * 10,
+                )
+                self._on_signal(signal_obj)
+                processed += 1
+            if processed:
+                self.log.info(f"Sybil signals: {processed} queued signals processed (65-72% filter)")
+        except Exception as e:
+            self.log.error(f"Sybil signal check failed: {e}")
 
     def _validate_sybil_signal_price(self, signal: dict) -> tuple[bool, str]:
         """Check current market midpoint hasn't moved against the signal direction.
