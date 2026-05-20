@@ -201,11 +201,24 @@ def on_signal(
             )
             return
 
+    # ── General Category — Heavily Restricted ───────────────────────────
+    # General has 95 trades, -$527, PF 0.46: winning trades but $27 avg loss vs $6 avg win
+    # Apply strict edge filter to salvage what edge exists
+    mc = getattr(signal, "market_category", "") or ""
+    if mc.lower() == "general":
+        if edge_val < 0.25:
+            log.info(
+                f"REJECT general below edge threshold: {signal.whale_name} | "
+                f"edge={edge_val:.2f} < 0.25 | "
+                f"market={getattr(signal, 'market_title', '')[:40]}"
+            )
+            return
+
     # REJECT: blacklisted whales
     if signal.whale_name in WHALE_BLACKLIST:
         log.info(f"REJECT blacklisted whale: {signal.whale_name}")
         return
-    mc = getattr(signal, "market_category", "") or ""
+    # mc already set above — reuse for sports blacklist check
     if signal.whale_name in SPORTS_WHALE_BLACKLIST and mc.lower() == "sports":
         log.info(f"REJECT sports-blacklisted whale: {signal.whale_name}")
         return
