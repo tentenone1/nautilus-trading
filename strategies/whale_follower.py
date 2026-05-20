@@ -1680,6 +1680,20 @@ class WhaleFollower(Strategy):
             self.log.info(f"No Kelly edge{wr_note}, skipping")
             return
 
+        # Max concurrent crypto positions check (8 max per DeepSeek V4 Pro analysis)
+        # Crypto has 39% market-resolved loss rate — cap exposure to 8 concurrent
+        if market_category.lower() == "crypto":
+            crypto_open = sum(
+                1 for p in self._open_positions.values()
+                if p.get("market_category", "").lower() == "crypto"
+            )
+            if crypto_open >= 8:
+                self.log.info(
+                    f"Crypto max concurrent positions reached ({crypto_open}/8), skipping: "
+                    f"{whale_name} | {inst_key[:50]}..."
+                )
+                return
+
         # Liquidity-based size adjustment (Track A)
         size_usd = self._adjust_size_for_liquidity(size_usd, inst_id)
 
