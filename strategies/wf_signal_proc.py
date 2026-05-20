@@ -330,9 +330,13 @@ def on_signal(
         ).get("kelly_multiplier", 1.0)
         signal.suggested_size_usd = round(signal.suggested_size_usd * tier_kelly, 2)
 
-    # LLM signal quality scoring (1700 Qwen3.5-9B, ~0.3s)
+    # LLM signal quality scoring (1700 Qwen3.6-35B, ~0.3s)
+    # Threshold: reject only scores strictly below 3.
+    # The MiniMax scoring model sometimes rates signals at 3/10 even when
+    # confidence is 72-75%. Raising the floor to >=5 was killing valid signals.
+    # Aligned with whale_follower._on_signal which uses the same 3/10 floor.
     llm_score = llm_score_signal(signal=signal, log=log)
-    if llm_score < 5:
+    if llm_score < 3:
         log.info(f"REJECT LLM score={llm_score}/10: {signal.whale_name}")
         return
     log.info(
