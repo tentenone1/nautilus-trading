@@ -1,0 +1,17 @@
+[
+  {
+    "trade_id": "6dbba281-a55b-4741-85f1-a46fac5c0389",
+    "timestamp": "2026-05-20 00:01:39.430822+00:00",
+    "market_title": "US x Cuba diplomatic meeting by May 31?",
+    "condition_id": "0xf6a7f2cc60e471e6324ab27237af4a2b67d1ea142d16501efc0014cf88e9e209",
+    "side": "BUY",
+    "entry_price": 0.08,
+    "exit_price": 0.23897599999999997,
+    "position_size_usd": 0.51749992,
+    "realized_pnl": 1.0283758410239996,
+    "realized_return": 1.9871999999999994,
+    "resolution_outcome": null,
+    "category": "general",
+    "instrument_id": "0xf6a7f2cc60e471e6324ab27237af4a2b67d1ea142d16501efc0014cf88e9e209-115427236898524391990727218051781551212507142215112020355213484073428322971366.POLYMARKET"
+  }
+]

@@ -121,6 +121,8 @@ from strategies.wf_position_checks import (
     get_current_total_exposure,
     get_market_exposure,
 )
+from strategies.capital_pool import CapitalPool
+from strategies.base_strategy import get_strategy, BaseWhaleFollowerStrategy
 
 from py_clob_client.client import ClobClient
 from py_clob_client.constants import POLYGON
@@ -384,6 +386,10 @@ class WhaleFollower(Strategy):
                 self.log.warning(f"Failed to initialize validation context: {e}")
                 self._validation_context = None
 
+        # ── Phase 4: Capital Pool + Per-Category Strategies ──────────────
+        self._capital_pool: CapitalPool | None = None
+        self._strategies: dict[str, BaseWhaleFollowerStrategy] = {}
+
     def on_start(self) -> None:
         # Load daily P&L state from disk so kill switches survive restarts.
         # If the stored date is stale (yesterday), returns clean defaults.
@@ -436,6 +442,27 @@ class WhaleFollower(Strategy):
             }
             if self._intel_blacklist:
                 self.log.info(f"Intel blacklist: {len(self._intel_blacklist)} whales from intelligence data")
+
+        # ── Phase 4: Initialize Capital Pool + Per-Category Strategies ──
+        self._capital_pool = CapitalPool(total_bankroll=self.config.bankroll)
+        self._strategies = {}
+        for cat_name in CapitalPool.CATEGORIES:
+            try:
+                strat = get_strategy(cat_name)
+                strat.config = self.config
+                strat.tracker = self._tracker
+                strat.whale_tiering = self._whale_tiering
+                strat.capital_pool = self._capital_pool
+                strat.log = self.log
+                self._strategies[cat_name] = strat
+            except ValueError:
+                self.log.warning(f"No strategy class for category: {cat_name}")
+        if self._strategies:
+            names = ", ".join(sorted(self._strategies.keys()))
+            self.log.info(
+                f"Phase 4: CapitalPool=${self.config.bankroll:,.0f}, "
+                f"strategies=[{names}]"
+            )
 
         # Initialize resolution poller for real P&L tracking
         self._resolution_poller = ResolutionPoller(strategy=self)
@@ -1680,19 +1707,14 @@ class WhaleFollower(Strategy):
             self.log.info(f"No Kelly edge{wr_note}, skipping")
             return
 
-        # Max concurrent crypto positions check (8 max per DeepSeek V4 Pro analysis)
-        # Crypto has 39% market-resolved loss rate — cap exposure to 8 concurrent
-        if market_category.lower() == "crypto":
-            crypto_open = sum(
-                1 for p in self._open_positions.values()
-                if p.get("market_category", "").lower() == "crypto"
+        # ── Phase 4: Per-category strategy position check ──────────────────
+        strategy = self._strategies.get(market_category.lower())
+        if strategy is not None and not strategy.can_accept_position():
+            self.log.info(
+                f"({market_category}) can_accept_position=False — cap reached, "
+                f"skipping: {whale_name} | {inst_key[:50]}..."
             )
-            if crypto_open >= 8:
-                self.log.info(
-                    f"Crypto max concurrent positions reached ({crypto_open}/8), skipping: "
-                    f"{whale_name} | {inst_key[:50]}..."
-                )
-                return
+            return
 
         # Liquidity-based size adjustment (Track A)
         size_usd = self._adjust_size_for_liquidity(size_usd, inst_id)
@@ -1710,6 +1732,24 @@ class WhaleFollower(Strategy):
         hard_cap = capital * max_single_pct
         if size_usd > hard_cap:
             size_usd = hard_cap
+
+        # ── Phase 4: Request capital from the pool ───────────────────────
+        capital_requested = False
+        if strategy is not None:
+            granted = strategy.request_capital(size_usd)
+            if granted <= 0:
+                self.log.info(
+                    f"({market_category}) pool exhausted — request_capital(${size_usd:.0f}) "
+                    f"returned ${granted:.0f}, skipping: {whale_name}"
+                )
+                return
+            if granted < size_usd:
+                self.log.info(
+                    f"({market_category}) partial capital grant: ${granted:.0f} < desired ${size_usd:.0f}, "
+                    f"adjusting from ${size_usd:.0f} to ${granted:.0f}"
+                )
+                size_usd = granted
+            capital_requested = True
 
         # Brief guard: if even the computed size exceeds available, skip
         if size_usd > available:
@@ -1731,6 +1771,9 @@ class WhaleFollower(Strategy):
             mode=get_current_mode(),
         )
         if not allowed:
+            # ── Phase 4: Release pool capital if it was reserved ──────────
+            if capital_requested and strategy is not None:
+                strategy.release_capital(0.0, size_usd)
             # Position limits breached - trigger kill switch
             trigger_kill_switch(
                 config=self.config,
@@ -1745,14 +1788,18 @@ class WhaleFollower(Strategy):
             self._kill_switch_breached = True
             return
 
-        # Max open positions check
-        open_count = len(self._open_positions)
-        max_positions = self.config.max_open_positions
-        if open_count >= max_positions:
-            self.log.info(
-                f"Max positions reached ({open_count}/{max_positions}), skipping"
-            )
-            return
+        # ── Phase 4: Max open positions check (strategy cap via can_accept) ──
+        # If a per-category strategy is wired, can_accept_position() already
+        # enforced the per-category max. Only fall through to the global cap
+        # for categories without a registered strategy.
+        if strategy is None:
+            open_count = len(self._open_positions)
+            max_positions = self.config.max_open_positions
+            if open_count >= max_positions:
+                self.log.info(
+                    f"Max positions reached ({open_count}/{max_positions}), skipping"
+                )
+                return
         # Low‑cash alert: warn if free balance drops below 20 % of bankroll
         if available < LOW_CASH_ALERT_PCT * self.config.bankroll:
             self.log.warning(
@@ -2012,6 +2059,13 @@ class WhaleFollower(Strategy):
         # paper_trade = 1 if category is paper-only (price_cap == 0.0) or price-gated and entry > cap
         category = pos_info.get('category', '') or ''
         cat_lower = category.lower()
+
+        # ── Phase 4: Release capital back to the pool ─────────────────────
+        strat = self._strategies.get(cat_lower)
+        if strat is not None:
+            position_size = pos_info.get("size", qty * entry_price)
+            strat.release_capital(realized_pnl, position_size)
+
         price_cap = LIVE_ENTRY_PRICE_CAPS.get(cat_lower, None)
         entry_price = pos_info.get('entry_price', 0.0) or 0.0
         is_paper = (price_cap == 0.0) or (price_cap is not None and price_cap > 0.0 and entry_price > price_cap)
@@ -2772,16 +2826,26 @@ class WhaleFollower(Strategy):
 
     def _kelly_size(self, price: float, whale_win_rate: float | None = None, edge_score: float = 0.0, available_balance: float | None = None, market_category: str = '') -> float:
         from strategies.wf_kelly import kelly_size
+        # ── Phase 4: Per-category params from strategy ──────────────────
+        strategy = self._strategies.get(market_category.lower())
+        if strategy is not None:
+            kelly_fraction = strategy.params.kelly_fraction
+            max_position_pct = strategy.params.max_single_position_pct
+            max_single_pct = strategy.params.max_single_position_pct
+        else:
+            kelly_fraction = self.config.kelly_fraction
+            max_position_pct = self.config.max_position_pct
+            max_single_pct = self.config.max_single_position_pct
         return kelly_size(
             bankroll=self.config.bankroll,
-            kelly_fraction=self.config.kelly_fraction,
-            max_position_pct=self.config.max_position_pct,
+            kelly_fraction=kelly_fraction,
+            max_position_pct=max_position_pct,
             price=price,
             whale_win_rate=whale_win_rate,
             edge_score=edge_score,
             available_balance=available_balance,
             market_category=market_category,
-            max_single_position_pct=self.config.max_single_position_pct,
+            max_single_position_pct=max_single_pct,
             whale_tiering=self._whale_tiering,
         )
 

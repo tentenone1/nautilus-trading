@@ -1,0 +1,17 @@
+[
+  {
+    "trade_id": "7afcbefe-bce3-4b89-a460-5da14fadb6b1",
+    "timestamp": "2026-05-20 05:45:52.025764+00:00",
+    "market_title": "XRP Up or Down - May 19, 2:45AM-2:50AM ET",
+    "condition_id": "0x83e5dea613543c0cb605ad745b28f19de1768bc65cd0ec383139f55e445162b1",
+    "side": "BUY",
+    "entry_price": 0.06,
+    "exit_price": 0.0,
+    "position_size_usd": 0.525,
+    "realized_pnl": -0.525,
+    "realized_return": -1.0,
+    "resolution_outcome": "LOSS | Down won | Actual: $-0.53",
+    "category": "general",
+    "instrument_id": "0x83e5dea613543c0cb605ad745b28f19de1768bc65cd0ec383139f55e445162b1-94955672076063405344438891134001708942103086771946968652088260908487995987488.POLYMARKET"
+  }
+]

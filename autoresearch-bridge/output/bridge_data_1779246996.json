@@ -1,0 +1,17 @@
+[
+  {
+    "trade_id": "21c34c88-5958-4526-a322-71e8bc3bc0af",
+    "timestamp": "2026-05-20 03:14:19.181796+00:00",
+    "market_title": "Will the Carolina Hurricanes win the Eastern Conference?",
+    "condition_id": "0xd50349a2c87d5a64128c40574f310f60a130d8aaf955bd3d3d69aab62b1df539",
+    "side": "SELL",
+    "entry_price": 0.29,
+    "exit_price": null,
+    "position_size_usd": 4.58499976,
+    "realized_pnl": null,
+    "realized_return": null,
+    "resolution_outcome": null,
+    "category": "sports",
+    "instrument_id": "0xd50349a2c87d5a64128c40574f310f60a130d8aaf955bd3d3d69aab62b1df539-12156066857210688321182043626907069172947159496459366524573150839648937386191.POLYMARKET"
+  }
+]
