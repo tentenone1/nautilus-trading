@@ -76,8 +76,9 @@ class CategoryState:
         # P&L is added separately (can be positive or negative)
         self.total_pnl += pnl
 
-    def close_position(self, position_size: float) -> None:
-        """Mark one position closed (reduces count but NOT exposure — use release() for that)."""
+    def close_position(self) -> None:
+        """Mark one position closed (reduces count).
+        Call release() separately to adjust exposure and P&L."""
         self.open_position_count = max(0, self.open_position_count - 1)
 
 
@@ -88,7 +89,7 @@ class CapitalPool:
         total_bankroll: Total bankroll across all categories.
         allocations: Per-category allocation fractions. Must sum to 1.0.
         max_positions: Per-category max concurrent position count.
-        global_exposure_cap: Global exposure cap as fraction of total bankroll (default 0.95).
+        global_exposure_cap: Global exposure cap as fraction of total bankroll (default 0.60).
     """
 
     # Known categories (lowercase keys throughout)
@@ -99,7 +100,7 @@ class CapitalPool:
         total_bankroll: float,
         allocations: dict[str, float] | None = None,
         max_positions: dict[str, int] | None = None,
-        global_exposure_cap: float = 0.95,
+        global_exposure_cap: float = 0.60,
     ) -> None:
         if total_bankroll <= 0:
             raise ValueError(f"total_bankroll must be positive, got {total_bankroll}")
@@ -185,7 +186,7 @@ class CapitalPool:
         cat = category.lower()
         state = self._category_states[cat]
         state.release(pnl, position_size)
-        state.close_position(position_size)
+        state.close_position()
 
     def get_category_allocation(self, category: str) -> float:
         """Return the allocated capital for a category (total_bankroll × allocation_pct)."""

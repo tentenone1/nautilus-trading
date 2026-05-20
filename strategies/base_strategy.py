@@ -93,8 +93,9 @@ class BaseWhaleFollowerStrategy(ABC):
         """Return True if this category can accept another position."""
         if self.capital_pool is not None:
             return self.capital_pool.can_open_position(self.category_name)
-        # Fallback: count open positions (subclass should track)
-        return True
+        # Fallback: capital pool unavailable — fail closed
+        self.log.warning("CapitalPool unavailable — rejecting position for %s", self.category_name)
+        return False
 
     def request_capital(self, desired_size: float) -> float:
         """Request capital from the shared pool for a new position.
@@ -103,7 +104,9 @@ class BaseWhaleFollowerStrategy(ABC):
         category allocation or global cap is hit).
         """
         if self.capital_pool is None:
-            return desired_size
+            # Fail-closed: without CapitalPool we cannot safely allocate
+            self.log.warning("CapitalPool unavailable — cannot allocate capital for %s", self.category_name)
+            return 0.0
         return self.capital_pool.request_capital(self.category_name, desired_size)
 
     def release_capital(self, pnl: float, position_size: float) -> None:
@@ -128,7 +131,13 @@ class BaseWhaleFollowerStrategy(ABC):
         Override in subclass for category-specific rules.
         Default: accept all signals that pass the general filters.
         """
-        mc = getattr(signal, "market_category", "") or ""
+        mc = getattr(signal, "market_category", None)
+        if mc is None:
+            self.log.warning(
+                "Signal missing market_category — rejecting for %s",
+                self.category_name,
+            )
+            return False
         if mc.lower() != self.category_name:
             return False  # Not for this category
         return True
@@ -176,7 +185,7 @@ class SportsStrategy(BaseWhaleFollowerStrategy):
     category_name: ClassVar[str] = "sports"
     params: ClassVar[CategoryParams] = CategoryParams(
         kelly_fraction=0.20,
-        kelly_cap=1.0,          # No hard cap; SPORTS_KELLY_MULTIPLIER applied in kelly_size()
+        kelly_cap=0.20,       # Hard cap — matches kelly_fraction; was 1.0 (unlimited)
         max_single_position_pct=0.02,
         max_concurrent=10,
         capital_allocation_pct=0.50,
