@@ -179,7 +179,7 @@ def calculate_actual_pnl(
     For SELL side (sold YES token = effectively bought NO):
         Inverse logic applies.
     """
-    if entry_price <= 0 or entry_price > 1:
+    if entry_price is None or entry_price <= 0 or entry_price > 1:
         return {"actual_pnl": None, "actual_return": None, "won": None}
     
     shares = position_size_usd / entry_price
