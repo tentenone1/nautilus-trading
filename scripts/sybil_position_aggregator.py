@@ -112,8 +112,7 @@ def load_entity_clusters() -> dict:
                 addr = name_to_addr.get(clean) or name_to_addr.get(clean.lower())
                 if addr:
                     wallets[addr] = clean
-                else:
-                    wallets[clean] = clean
+                # else: skip — name has no valid on-chain address
 
         if len(wallets) >= 3:
             group_id = f"entity_cluster_{cluster_id}"
@@ -148,7 +147,10 @@ def is_active_position(pos: dict) -> bool:
 
 
 def fetch_positions(address: str, timeout: int = 15) -> list[dict]:
-    """Fetch positions for a wallet from Polymarket data API."""
+    """Fetch open positions for a wallet address from Polymarket API."""
+    if not address.startswith("0x") or len(address) < 40:
+        logger.warning(f"Invalid address format, skipping: {address}")
+        return []
     url = f"{DATA_API_BASE}/positions?user={address}"
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
