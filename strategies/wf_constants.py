@@ -123,6 +123,8 @@ STALE_SUBSCRIPTION_TTL_SECS = 3600  # Clean up dynamic subscriptions older than 
 # ── Resolution Timing ────────────────────────────────────────────────────────
 
 RESOLUTION_EXIT_HOURS = 6  # Exit if market resolves within this many hours
+PRE_RESOLUTION_EXIT_HOURS = 48  # DeepSeek P1: exit 48h before if return < -20%
+PRE_RESOLUTION_STOP_LOSS_PCT = -0.20  # Exit if position is down more than this %
 
 
 # ── Sports Market Timing ─────────────────────────────────────────────────────

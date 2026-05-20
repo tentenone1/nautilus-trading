@@ -23,8 +23,10 @@ from strategies.wf_constants import (
     MAX_MARKET_EXPOSURE_PCT,
     VALIDATION_CAPITAL_BASE,
     RESOLUTION_EXIT_HOURS,
+    PRE_RESOLUTION_EXIT_HOURS,
+    PRE_RESOLUTION_STOP_LOSS_PCT,
 )
-from strategies.wf_market_data import should_exit_for_resolution
+from strategies.wf_market_data import should_exit_for_resolution, hours_until_resolution
 
 # ── Category-based exit thresholds ─────────────────────────────────────────────
 # Each category defines entry-to-exit percentage triggers.
@@ -370,6 +372,35 @@ def check_all_positions(
                         clob_client=clob_client,
                         instrument_id=inst_id,
                         exit_reason="sports_stop_loss",
+                        market_category=market_category,
+                        strategy=strategy,
+                    )
+                    continue
+
+            # ── Phase 3b: Pre-resolution stop-loss (DeepSeek V4 Pro Priority #1) ──
+            # Exit positions that are approaching resolution AND already down >20%.
+            # This recovers ~$4,700 in preventable market-resolved losses across all categories.
+            # Crypto is the biggest target: 39% of crypto trades end in market-resolved losses.
+            hours_left = hours_until_resolution(inst_key)
+            if hours_left is not None and 0 < hours_left < PRE_RESOLUTION_EXIT_HOURS:
+                if current_return <= PRE_RESOLUTION_STOP_LOSS_PCT:
+                    log.info(
+                        f"PRE-RESOLUTION STOP LOSS {inst_id}: "
+                        f"hours_left={hours_left:.1f}h, return={current_return:+.1%}, "
+                        f"threshold={PRE_RESOLUTION_STOP_LOSS_PCT:+.0%}, "
+                        f"category={market_category}, entry={entry:.4f}, mid={mid:.4f}"
+                    )
+                    exit_position(
+                        config=config,
+                        cache=cache,
+                        log=log,
+                        open_positions=open_positions,
+                        exited_positions=exited_positions,
+                        last_exit_time=last_exit_time,
+                        resolution_poller=resolution_poller,
+                        clob_client=clob_client,
+                        instrument_id=inst_id,
+                        exit_reason="pre_resolution_stop_loss",
                         market_category=market_category,
                         strategy=strategy,
                     )

@@ -222,6 +222,24 @@ def on_signal(
                 f"market={getattr(signal, 'market_title', '')[:40]}"
             )
             return
+        # $100K minimum market volume (DeepSeek V4 Pro Priority #4)
+        vol = getattr(signal, "volume", 0) or 0
+        if vol < 100_000:
+            log.info(
+                f"REJECT general below volume threshold: {signal.whale_name} | "
+                f"volume=${vol:,.0f} < $100,000 | "
+                f"market={getattr(signal, 'market_title', '')[:40]}"
+            )
+            return
+        # 7+ days to resolution (DeepSeek V4 Pro Priority #4)
+        hours_left = getattr(signal, "hours_until_event", None)
+        if hours_left is not None and hours_left < 168:
+            log.info(
+                f"REJECT general too close to resolution: {signal.whale_name} | "
+                f"hours_until_event={hours_left:.0f}h < 168h (7 days) | "
+                f"market={getattr(signal, 'market_title', '')[:40]}"
+            )
+            return
 
     # REJECT: blacklisted whales
     if signal.whale_name in WHALE_BLACKLIST:

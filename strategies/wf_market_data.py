@@ -178,3 +178,40 @@ def should_exit_for_resolution(
     except Exception:
         pass  # API failure — don't exit on error
     return False
+
+
+def hours_until_resolution(
+    instrument_id_str: str,
+) -> float | None:
+    """Return hours until market resolution, or None if unknown.
+
+    Positive = future, negative = already past/resolved, None = API error.
+    Reuses the resolution cache from should_exit_for_resolution to avoid
+    duplicate API calls in the hot path.
+    """
+    try:
+        cond_id = instrument_id_str.split("-")[0]
+        now = datetime.now(timezone.utc).timestamp()
+
+        if cond_id in _resolution_cache:
+            cached_ts, cached_market = _resolution_cache[cond_id]
+            if now - cached_ts < RESOLUTION_CACHE_TTL_SECS:
+                end_date = cached_market.get("end_date_iso")
+                if end_date:
+                    end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                    return (end_dt - datetime.now(timezone.utc)).total_seconds() / 3600
+
+        resp = requests.get(
+            f"https://data-api.polymarket.com/markets/{cond_id}",
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            market = resp.json()
+            _resolution_cache[cond_id] = (now, market)
+            end_date = market.get("end_date_iso")
+            if end_date:
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                return (end_dt - datetime.now(timezone.utc)).total_seconds() / 3600
+    except Exception:
+        pass
+    return None
