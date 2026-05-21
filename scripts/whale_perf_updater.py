@@ -412,15 +412,24 @@ def main() -> None:
         save_tier_assignments(updated)
         logger.info("Done — tier_assignments.json updated")
 
-        # Also save a snapshot for the bridge state
+        # Save a snapshot for the bridge state — MERGE with existing to preserve
+        # signal bridge tracking keys (condition_id|timestamp entries).
+        # See "Shared State Warning" in autoresearch-bridge skill for details.
         STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        STATE_FILE.write_text(json.dumps({
+        existing = {}
+        if STATE_FILE.exists():
+            try:
+                existing = json.loads(STATE_FILE.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
+        existing.update({
             "last_run": datetime.now(timezone.utc).isoformat(),
             "whales_updated": len(stats),
             "snapshot": {name: {k: v for k, v in s.items() if k in (
                 "win_rate", "kelly_multiplier", "precision_tier", "trade_count_30d", "total_pnl_30d"
             )} for name, s in stats.items()}
-        }, indent=2))
+        })
+        STATE_FILE.write_text(json.dumps(existing, indent=2, sort_keys=False))
 
 
 if __name__ == "__main__":
