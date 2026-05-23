@@ -41,6 +41,11 @@ DEFAULT_MAX_POSITIONS: dict[str, int] = {
     "geopolitics": 3,
 }
 
+# Fade position allocation: percentage of each category's allocation reserved for FADE trades.
+# Fade trades (trading opposite to consistently losing whales) are an independent signal source,
+# so they get their own slice within each category.
+DEFAULT_FADE_ALLOCATION_PCT: float = 0.20  # 20% of each category's allocation goes to fade
+
 
 @dataclass
 class CategoryState:
@@ -51,11 +56,21 @@ class CategoryState:
     current_exposure: float = 0.0     # sum of open position sizes (USD)
     open_position_count: int = 0      # number of open positions
     total_pnl: float = 0.0           # cumulative realized P&L for this category
+    # Fade-specific tracking
+    fade_allocation_pct: float = 0.0  # percentage of THIS category's allocation for fade
+    fade_exposure: float = 0.0        # current exposure in fade positions
+    fade_pnl: float = 0.0            # cumulative P&L from fade positions
+    fade_open_count: int = 0         # number of open fade positions
 
     def available_capacity(self, total_bankroll: float) -> float:
         """How much more this category can deploy."""
         cap = total_bankroll * self.allocation_pct
         return max(0.0, cap - self.current_exposure)
+
+    def fade_available(self, total_bankroll: float) -> float:
+        """How much fade capacity remains within this category's fade bucket."""
+        fade_cap = total_bankroll * self.allocation_pct * self.fade_allocation_pct
+        return max(0.0, fade_cap - self.fade_exposure)
 
     def request(self, amount: float, total_bankroll: float) -> float:
         """Try to allocate `amount`. Returns what was actually granted (0 if exhausted)."""
@@ -64,17 +79,31 @@ class CategoryState:
             self.current_exposure += granted
         return granted
 
-    def release(self, pnl: float, position_size: float) -> None:
+    def request_fade(self, amount: float, total_bankroll: float) -> float:
+        """Try to allocate `amount` from the fade bucket. Returns what was granted."""
+        granted = min(amount, self.fade_available(total_bankroll))
+        if granted > 0:
+            self.fade_exposure += granted
+            self.current_exposure += granted
+            self.fade_open_count += 1
+        return granted
+
+    def release(self, pnl: float, position_size: float, is_fade: bool = False) -> None:
         """Record settlement and return capital to the pool.
 
         Args:
             pnl: Realized P&L (positive = profit, negative = loss).
-            position_size: Original position size — used to clear exposure, NOT pnl.
+            position_size: Original position size - used to clear exposure, NOT pnl.
+            is_fade: Whether this was a fade position (tracks P&L separately).
         """
         # Exposure is cleared by the full position size (capital returns to pool)
         self.current_exposure = max(0.0, self.current_exposure - position_size)
         # P&L is added separately (can be positive or negative)
         self.total_pnl += pnl
+        # Track fade positions separately
+        if is_fade:
+            self.fade_exposure = max(0.0, self.fade_exposure - position_size)
+            self.fade_pnl += pnl
 
     def close_position(self) -> None:
         """Mark one position closed (reduces count).
@@ -101,6 +130,7 @@ class CapitalPool:
         allocations: dict[str, float] | None = None,
         max_positions: dict[str, int] | None = None,
         global_exposure_cap: float = 0.60,
+        fade_allocation_pct: float = DEFAULT_FADE_ALLOCATION_PCT,
     ) -> None:
         if total_bankroll <= 0:
             raise ValueError(f"total_bankroll must be positive, got {total_bankroll}")
@@ -117,10 +147,12 @@ class CapitalPool:
                 f"Allocations must sum to 1.0, got {total_alloc:.4f}: {self._allocations}"
             )
 
+        self._fade_allocation_pct = fade_allocation_pct
         self._category_states: dict[str, CategoryState] = {
             cat: CategoryState(
                 allocation_pct=self._allocations[cat],
                 max_positions=self._max_positions.get(cat, 0),
+                fade_allocation_pct=self._fade_allocation_pct,
             )
             for cat in self.CATEGORIES
         }
@@ -170,11 +202,52 @@ class CapitalPool:
 
         return granted
 
+    def request_fade_capital(
+        self,
+        category: str,
+        desired_size: float,
+    ) -> float:
+        """Request capital from the fade bucket within a category.
+
+        Fade positions trade opposite to consistently losing whales.
+        They use a dedicated portion of each category's allocation.
+
+        Returns:
+            Amount of capital actually granted (0 if fade bucket exhausted
+            or category would exceed max positions).
+        """
+        cat = category.lower()
+        if cat not in self._category_states:
+            cat = "general" if "general" in self._category_states else self.CATEGORIES[0]
+
+        state = self._category_states.get(cat)
+        if state is None:
+            return 0.0
+
+        # Check max positions (fade positions count toward total)
+        if state.open_position_count >= state.max_positions:
+            return 0.0
+
+        # Check global exposure cap
+        total_exposure = sum(s.current_exposure for s in self._category_states.values())
+        max_global = self.total_bankroll * self.global_exposure_cap
+        if total_exposure >= max_global:
+            return 0.0
+
+        # Check fade bucket capacity
+        granted = state.request_fade(
+            min(desired_size, self.total_bankroll * 0.02),  # max 2% per fade position
+            self.total_bankroll,
+        )
+
+        return granted
+
     def release_capital(
         self,
         category: str,
         pnl: float,
         position_size: float,
+        is_fade: bool = False,
     ) -> None:
         """Release capital after position settlement.
 
@@ -182,10 +255,13 @@ class CapitalPool:
             category: Category the position was in.
             pnl: Realized P&L (positive = profit, negative = loss).
             position_size: Original position size (used to reduce exposure).
+            is_fade: Whether this was a fade position (tracks P&L separately).
         """
         cat = category.lower()
-        state = self._category_states[cat]
-        state.release(pnl, position_size)
+        state = self._category_states.get(cat)
+        if state is None:
+            return
+        state.release(pnl, position_size, is_fade=is_fade)
         state.close_position()
 
     def get_category_allocation(self, category: str) -> float:
@@ -244,7 +320,11 @@ class CapitalPool:
                     "allocated": self.total_bankroll * state.allocation_pct,
                     "current_exposure": state.current_exposure,
                     "available": state.available_capacity(self.total_bankroll),
+                    "fade_exposure": state.fade_exposure,
+                    "fade_available": state.fade_available(self.total_bankroll),
+                    "fade_pnl": state.fade_pnl,
                     "open_positions": state.open_position_count,
+                    "fade_open_count": state.fade_open_count,
                     "max_positions": state.max_positions,
                     "total_pnl": state.total_pnl,
                 }

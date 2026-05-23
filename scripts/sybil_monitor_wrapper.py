@@ -50,7 +50,10 @@ def run_sybil_monitoring() -> Dict[str, Any]:
     positions = _safe_call(agg_position, "sybil_position_aggregator")
 
     # Step 3 – compute meta‑whale groups
-    meta = _safe_call(compute_meta, "sybil_intelligence")
+    # Pass default args namespace to avoid sys.argv parsing conflict
+    import argparse as _argparse
+    _sybil_args = _argparse.Namespace(full_history=False, output=str(pathlib.Path(__file__).parent.parent / "research" / "sybil_intelligence.json"), skip_llm=False)
+    meta = _safe_call(lambda: compute_meta(args=_sybil_args), "sybil_intelligence")
 
     report = {
         "timestamp": datetime.now(timezone.utc).isoformat(),

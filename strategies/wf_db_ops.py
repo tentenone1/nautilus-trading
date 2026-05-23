@@ -36,6 +36,10 @@ _PHASE1_COLUMNS = [
     ("slippage_bps", "REAL DEFAULT 0"),
     ("fill_completion_pct", "REAL DEFAULT 100"),
     ("snapshot_id", "TEXT"),
+    ("market_slug", "TEXT"),
+    ("token_index", "INTEGER"),
+    ("token0_outcome", "TEXT"),
+    ("token1_outcome", "TEXT"),
 ]
 
 
@@ -78,7 +82,11 @@ def _ensure_db_schema(conn: sqlite3.Connection) -> None:
             slippage_bps REAL DEFAULT 0,
             fill_completion_pct REAL DEFAULT 100,
             snapshot_id TEXT,
-            paper_trade INTEGER DEFAULT 0
+            paper_trade INTEGER DEFAULT 0,
+            market_slug TEXT,
+            token_index INTEGER,
+            token0_outcome TEXT,
+            token1_outcome TEXT
         )
     """)
 
@@ -227,6 +235,27 @@ def log_trade_to_db(
         conn.execute("PRAGMA busy_timeout=5000")
         _ensure_db_schema(conn)
 
+        # ── Look up market_slug, token_index, token outcomes from slug mapping DB ──
+        _market_slug = None
+        _token_index = None
+        _token0_outcome = None
+        _token1_outcome = None
+        try:
+            _slug_conn = sqlite3.connect("/tmp/cid_slug_mapping.db")
+            _row = _slug_conn.execute(
+                "SELECT market_slug, token0_id, token0_outcome, token1_id, token1_outcome "
+                "FROM slug_mapping WHERE condition_id = ?",
+                (condition_id,),
+            ).fetchone()
+            _slug_conn.close()
+            if _row:
+                _market_slug, _token0_id, _token0_outcome, _token1_id, _token1_outcome = _row
+                # Derive token_id from instrument_id (format: condition_id-token_id)
+                _token_id = instrument_id.split("-")[1].split(".")[0] if "-" in (instrument_id or "") else ""
+                _token_index = 0 if _token_id == _token0_id else 1
+        except Exception:
+            pass  # mapping DB unavailable — columns remain None
+
         conn.execute("BEGIN TRANSACTION")
         conn.execute("""
             INSERT OR IGNORE INTO trades (
@@ -236,8 +265,9 @@ def log_trade_to_db(
                 kelly_fraction, entry_reason, instrument_id, condition_id,
                 detection_delay_ms, execution_delay_ms, fill_delay_ms,
                 total_latency_ms, intended_entry_price, actual_fill_price,
-                slippage_bps, fill_completion_pct, snapshot_id, paper_trade
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                slippage_bps, fill_completion_pct, snapshot_id, paper_trade,
+                market_slug, token_index, token0_outcome, token1_outcome
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trade_id,
             timestamp,
@@ -265,6 +295,10 @@ def log_trade_to_db(
             fill_completion_pct,
             snapshot_id,
             paper_trade,
+            _market_slug,
+            _token_index,
+            _token0_outcome,
+            _token1_outcome,
         ))
         conn.execute("COMMIT")
         conn.close()

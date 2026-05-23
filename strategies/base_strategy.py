@@ -109,10 +109,29 @@ class BaseWhaleFollowerStrategy(ABC):
             return 0.0
         return self.capital_pool.request_capital(self.category_name, desired_size)
 
-    def release_capital(self, pnl: float, position_size: float) -> None:
-        """Release capital back to the pool after position settlement."""
+    def release_capital(self, pnl: float, position_size: float, is_fade: bool = False) -> None:
+        """Release capital back to the pool after position settlement.
+
+        Args:
+            pnl: Realized P&L (positive = profit, negative = loss).
+            position_size: Original position size in USD.
+            is_fade: Whether this was a fade position (tracks P&L separately).
+        """
         if self.capital_pool is not None:
-            self.capital_pool.release_capital(self.category_name, pnl, position_size)
+            self.capital_pool.release_capital(self.category_name, pnl, position_size, is_fade=is_fade)
+
+    def request_fade_capital(self, desired_size: float) -> float:
+        """Request capital from the fade bucket within this category's allocation.
+
+        Fade positions trade opposite to consistently losing whales.
+        They draw from a dedicated portion of the category's allocation.
+
+        Returns the amount actually granted (0 if fade bucket is exhausted).
+        """
+        if self.capital_pool is None:
+            self.log.warning("CapitalPool unavailable - cannot allocate fade capital for %s", self.category_name)
+            return 0.0
+        return self.capital_pool.request_fade_capital(self.category_name, desired_size)
 
     def get_category_name(self) -> str:
         return self.category_name

@@ -113,7 +113,15 @@ from strategies.wf_position_persistence import (
 )
 from strategies.wf_sports import is_sports_market, get_market_event_time, should_exit_for_sports
 from strategies.wf_db_ops import log_trade_to_db, recover_open_positions, update_trade_latency_fields
-from strategies.wf_signal_proc import on_signal, scan_whale_positions, process_trade_buffer, llm_score_signal
+from strategies.wf_signal_proc import scan_whale_positions
+from strategies.llm_scorer import llm_score_signal
+from strategies.signal_pipeline import SignalPipeline
+from strategies.risk_manager import RiskManager, RiskState
+from strategies.position_manager import PositionManager
+from strategies.state_manager import StateManager
+from strategies.signal_bridge import SignalBridge
+from strategies.wf_signal_handler import SignalHandler
+from strategies.state_manager import update_gap_state
 from strategies.wf_position_checks import check_all_positions, check_daily_loss_limit
 from strategies.wf_position_checks import (
     check_position_limits,
@@ -124,9 +132,6 @@ from strategies.wf_position_checks import (
 from strategies.capital_pool import CapitalPool
 from strategies.base_strategy import get_strategy, BaseWhaleFollowerStrategy
 
-from py_clob_client.client import ClobClient
-from py_clob_client.constants import POLYGON
-from nautilus_trader.adapters.polymarket.common.parsing import parse_polymarket_instrument
 
 
 # ── Module-level Constants ─────────────────────────────────────────────────────
@@ -360,6 +365,7 @@ class WhaleFollower(Strategy):
         self._daily_loss_limit: float = self.config.daily_loss_limit  # Stop trading if daily loss exceeds this
         self._daily_loss_breached: bool = False  # Permanently stops trading until next day
         self._kill_switch_breached: bool = False  # Phase 1: stops trading when position limits breached
+        self._kill_switch_time: float = 0.0  # Timestamp when kill switch was triggered
         self._pending_whales: dict[str, dict] = {}  # client_order_id -> {whale_name, market_title, category}
         self._last_exit_time: dict[str, float] = {}  # inst_id -> timestamp (re-entry cooldown)
         self._last_resolution_check: dict[str, float] = {}  # inst_id -> timestamp (rate-limit API calls)
@@ -371,6 +377,15 @@ class WhaleFollower(Strategy):
         self._fade_positions: set[str] = set()  # Track active fade positions for concurrency limiting
         self._fade_max_concurrent: int = 3  # Max concurrent fade trades
         self._sybil_price_cache: dict[str, tuple[float, float]] = {}  # condition_id -> (midpoint, timestamp)
+
+        # ── Signal Pipeline + Risk Manager (decomposed from inline logic) ──
+        self._pipeline: SignalPipeline | None = None  # Initialized in on_start
+        self._risk_state: RiskState | None = None
+        self._risk_manager: RiskManager | None = None
+        self._position_mgr: PositionManager | None = None  # Initialized in on_start
+        self._state_mgr: StateManager | None = None  # Initialized in on_start
+        self._signal_bridge: SignalBridge | None = None  # Initialized in on_start
+        self._signal_handler: SignalHandler | None = None  # Initialized in on_start
         
         # ── Phase 1 Validation Context ──────────────────────────────────────────────
         # Trade correlation tracker for latency/slippage metrics
@@ -427,6 +442,27 @@ class WhaleFollower(Strategy):
         # Load whale intelligence data
         self._whale_intel = WhaleIntelligence()
         self.log.info(f"Loaded {len(self._whale_intel._intel)} whale intelligence profiles")
+
+        # ── Initialize Signal Pipeline + Risk Manager ──────────────────
+        self._pipeline = SignalPipeline(
+            whale_tiering=self._whale_tiering,
+            whale_intel=self._whale_intel,
+            min_confidence=self.config.min_confidence,
+            min_edge=0.15,
+            auto_trade=self.config.auto_trade,
+            daily_loss_breached=self._daily_loss_breached,
+        )
+        self._risk_state = RiskState(
+            daily_pnl=self._daily_pnl,
+            daily_pnl_date=self._daily_pnl_date,
+            daily_loss_breached=self._daily_loss_breached,
+        )
+        self._risk_manager = RiskManager(config=self.config)
+        self._position_mgr = PositionManager(strategy=self)
+        self._state_mgr = StateManager(strategy=self)
+        self._signal_bridge = SignalBridge(strategy=self)
+        self._signal_handler = SignalHandler(strategy=self)
+        self.log.info("SignalPipeline + RiskManager + PositionManager + StateManager initialized")
 
         # Cache all classified whales into dual-axis tier matrix
         cached_count = self._whale_intel.bulk_cache_tiers(self._whale_tiering)
@@ -615,19 +651,9 @@ class WhaleFollower(Strategy):
 
     @staticmethod
     def _categorize_instrument(inst_id: str) -> str:
-        """Fallback categorizer from instrument ID when signal lacks market_title."""
-        if not inst_id:
-            return "general"
-        parts = inst_id.split("-")
-        if len(parts) > 1:
-            raw = parts[1].replace(".POLYMARKET", "").replace("_", " ").replace("-", " ")
-            # Skip numeric-only strings (condition IDs) — not categorizable
-            if raw and raw[0].isdigit() and raw.replace(".", "").replace("_", "").isalnum():
-                return "general"
-            from strategies.whale_tracker_new import _categorize_market
-            result = _categorize_market(raw)
-            return result if result != "general" or raw else "general"
-        return "general"
+        """Delegate to wf_constants."""
+        from strategies.wf_constants import categorize_instrument
+        return categorize_instrument(inst_id)
 
     def on_quote_tick(self, tick: QuoteTick) -> None:
         bid = tick.bid_price.as_double()
@@ -681,331 +707,12 @@ class WhaleFollower(Strategy):
             self._last_trade_flush = now
 
     def on_order_filled(self, event: OrderFilled) -> None:
-        """Log filled orders to the trades database."""
-        conn = None
-        try:
-            import sqlite3
-            from pathlib import Path
-            
-            db_path = Path(__file__).parent.parent / "research" / "trades.db"
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            conn = sqlite3.connect(str(db_path))
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA busy_timeout=5000")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS trades (
-                    trade_id TEXT PRIMARY KEY,
-                    timestamp TEXT NOT NULL,
-                    whale_name TEXT,
-                    whale_address TEXT,
-                    category TEXT NOT NULL,
-                    market_title TEXT,
-                    condition_id TEXT,
-                    token_id TEXT,
-                    side TEXT,
-                    entry_price REAL,
-                    exit_price REAL,
-                    position_size_usd REAL,
-                    kelly_fraction REAL,
-                    confidence REAL,
-                    edge_score REAL,
-                    signal_source TEXT,
-                    entry_reason TEXT,
-                    exit_reason TEXT,
-                    realized_pnl REAL,
-                    realized_return REAL,
-                    duration_seconds REAL,
-                    resolution_outcome TEXT,
-                    dispute_flag INTEGER DEFAULT 0,
-                    notes TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Extract trade details from the fill event
-            inst_id = str(event.instrument_id)
-            self.log.info(f"[DEBUG] FILL event: client_order_id={event.client_order_id} type={type(event.client_order_id).__name__} pending_keys={list(self._pending_whales.keys())}")
-
-            # Look up whale metadata from pending dict (MUST be before any pending usage)
-            pending = self._pending_whales.pop(str(event.client_order_id), {})
-
-            # If no pending metadata, try to recover from _open_positions (restart recovery)
-            if not pending:
-                inst_key = str(event.instrument_id)
-                recovered = self._open_positions.get(inst_key, {})
-                if recovered:
-                    raw_name = recovered.get("whale_name", "unknown")
-                    if not raw_name or raw_name.lower() in ("", "unknown", "unknown whale"):
-                        import logging as _lg
-                        inst_label = str(event.instrument_id)[:30]
-                        _lg.getLogger("whale_follower").warning(
-                            f"Recovery: empty whale_name for {inst_label}..., "
-                            f"marking as 'unknown'"
-                        )
-                    pending = {
-                        "whale_name": raw_name,
-                        "market_title": recovered.get("market_title", ""),
-                        "category": recovered.get("category", ""),
-                        "whale_address": "",
-                        "edge_score": recovered.get("edge_score", 0.0),
-                        "confidence": recovered.get("confidence", 0.0),
-                        "entry_reason": "recovered_after_restart",
-                        "kelly_fraction": self.config.kelly_fraction,
-                        "entry_price": recovered.get("entry_price", 0.5),
-                        "signal_source": "whale_tracker",
-                    }
-                    self.log.info(f"[RECOVER] Recovered metadata from _open_positions for {inst_key[:50]}...")
-
-            # Still empty → not an entry fill (e.g. exit order, auto-managed fill) → skip
-            if not pending:
-                self.log.debug("No pending orders in fill handler, skipping")
-                return
-
-            raw_entry = pending.get('entry_price', None)
-            if raw_entry is None or (isinstance(raw_entry, (int, float)) and raw_entry == 0.0):
-                entry_price = event.last_px.as_double() if hasattr(event, 'last_px') and event.last_px else 0.5
-            else:
-                entry_price = raw_entry
-            self.log.info(f"[DEBUG] PENDING DICT: {pending}")
-
-            qty = event.last_qty.as_double() if hasattr(event, 'last_qty') and event.last_qty else 125
-            size_usd = qty * entry_price
-
-            # Use pending already populated above
-            whale_name_raw = pending.get("whale_name", "unknown")
-            if not whale_name_raw or whale_name_raw.lower() in ("", "unknown", "unknown whale"):
-                import logging as _lg
-                wallet = pending.get("whale_address", "")
-                if wallet:
-                    fallback = f"whale_0x{wallet[:6].lower()}"
-                    _lg.getLogger("whale_follower").warning(
-                        f"Fallback naming: {whale_name_raw!r} -> {fallback} "
-                        f"(wallet={wallet[:10]}...)"
-                    )
-                    whale_name = fallback
-                else:
-                    _lg.getLogger("whale_follower").warning(
-                        f"Empty whale_name with no wallet address for "
-                        f"{pending.get('market_title', '?')[:40]}"
-                    )
-                    whale_name = "unknown"
-            else:
-                whale_name = whale_name_raw
-            market_title = pending.get("market_title", "")
-            category = pending.get("category", "") or self._categorize_instrument(inst_id)
-            whale_address = pending.get("whale_address", "")
-            edge_score = pending.get("edge_score", 0.0) or 0.0
-            confidence = pending.get("confidence", 0.0) or 0.0
-            entry_reason = pending.get("entry_reason", "")
-            kelly_fraction = pending.get("kelly_fraction", 0.0)
-
-            # Fallback: extract market title from instrument ID if not from signal
-            if not market_title:
-                parts = inst_id.split('-')
-                raw_title = parts[1] if len(parts) > 1 else inst_id
-                # Don't store numeric condition IDs as titles
-                if raw_title and raw_title[0].isdigit():
-                    market_title = ""  # leave empty rather than storing numeric ID
-                else:
-                    market_title = raw_title[:80]
-
-            # Final category fallback — never leave as Unknown or empty
-            if not category or category == "Unknown":
-                category = "general"
-
-            # Determine if this is a paper trade (mirrors _on_signal routing logic)
-            # paper_trade = 1 if: category is paper-only (price_cap == 0.0)
-            # OR: category has price cap AND entry price exceeds it
-            price_cap = LIVE_ENTRY_PRICE_CAPS.get(category.lower(), None)
-            is_paper_only = (price_cap == 0.0)
-            entry_price = pending.get("entry_price", 0.0) or 0.0
-            is_price_gated = (price_cap is not None and price_cap > 0.0 and entry_price > price_cap)
-            paper_trade = 1 if (is_paper_only or is_price_gated) else 0
-
-            import uuid
-            trade_id = str(uuid.uuid4())
-            cond_id = inst_id.split("-")[0] if "-" in inst_id else inst_id
-
-            # ── ALWAYS register position for tracking first ──────────────────
-            # Position tracking must NOT depend on DB write success.
-            # DB write can fail (Bitable down, auth issue) but position still needs tracking.
-            # Reject sybil group signals — they generate phantom positions that never resolve
-            if whale_name.startswith("sybil_"):
-                self.log.warning(f"[POSITION] REJECTED sybil group signal: {whale_name} — group positions are not real Polymarket orders")
-                return
-            self._open_positions[str(event.instrument_id)] = {
-                "whale_name": whale_name,
-                "market_title": market_title,
-                "category": category,
-                "side": event.order_side.name if hasattr(event, 'order_side') else 'BUY',
-                "entry_price": entry_price,
-                "size": size_usd,
-                "entry_time": time.time(),
-                "trade_id": trade_id,
-                "condition_id": cond_id,
-                "venue_position_id": str(getattr(event, 'venue_position_id', '')),
-                "edge_score": edge_score,
-                "confidence": confidence,
-                "kelly_fraction": kelly_fraction,
-            }
-            save_open_positions(self._open_positions)
-            self.log.info(f"[POSITION] Registered {whale_name} | {market_title[:40]} | ${size_usd:.0f}")
-
-            # ── DB OPS: Delegate to wf_db_ops module ──
-            result = log_trade_to_db(
-                trade_id=trade_id,
-                timestamp=str(datetime.now(timezone.utc)),
-                whale_name=whale_name,
-                whale_address=whale_address,
-                market_title=market_title,
-                side=event.order_side.name if hasattr(event, 'order_side') else 'BUY',
-                entry_price=entry_price,
-                position_size_usd=size_usd,
-                category=category,
-                signal_source=pending.get("signal_source", "whale_tracker"),
-                edge_score=edge_score,
-                confidence=confidence,
-                kelly_fraction=kelly_fraction,
-                entry_reason=entry_reason,
-                instrument_id=inst_id,
-                condition_id=cond_id,
-                paper_trade=paper_trade,
-                log_func=self.log.info,
-            )
-            if result is None:
-                self.log.error(f"[DB] log_trade_to_db returned None — position registered but DB record missing")
-
-
-            # ── Update metrics on entry ──────────────────────────────────
-            # Use set_open_positions (NOT increment_trade_entered) because position
-            # may not yet be in Nautilus cache — metrics must reflect confirmed state
-            try:
-                from components.metrics import get_metrics
-                metrics = get_metrics()
-                metrics.set_open_positions(len(self._open_positions))
-            except Exception:
-                pass
-
-            # ── Phase 1: TRADE_FILLED event + latency/slippage metrics ──────────────────────────────
-            # Emit event after fill received, compute latency and slippage
-            filled_ts = time.monotonic_ns()
-            client_order_id = str(event.client_order_id)
-            validation_signal_id = pending.get("_validation_signal_id", "")
-            validation_snapshot_id = pending.get("_validation_snapshot_id", "")
-            
-            if _validation_available and log_event and EventType and validation_signal_id:
-                try:
-                    # Register fill in trade context
-                    if self._validation_context:
-                        try:
-                            self._validation_context.register_fill(
-                                client_order_id=client_order_id,
-                                filled_ts=filled_ts,
-                                actual_price=float(entry_price),
-                                filled_size=float(size_usd),
-                            )
-                        except Exception as ctx_err:
-                            self.log.warning(f"Trade context fill registration failed: {ctx_err}")
-                    
-                    # Compute latency metrics
-                    latencies = {"detection_delay_ms": 0, "execution_delay_ms": 0, "fill_delay_ms": 0, "total_latency_ms": 0}
-                    if self._validation_context:
-                        try:
-                            latencies = self._validation_context.compute_latencies(client_order_id)
-                        except Exception:
-                            pass  # Graceful fallback to zeros
-                    
-                    # Compute slippage metrics
-                    slippage = {"slippage_bps": 0.0, "fill_completion_pct": 100.0}
-                    if self._validation_context:
-                        try:
-                            slippage = self._validation_context.compute_slippage(client_order_id)
-                        except Exception:
-                            pass  # Graceful fallback to zeros
-                    
-                    # Emit TRADE_FILLED event
-                    log_event(
-                        event_type=EventType.TRADE_FILLED,
-                        payload={
-                            "signal_id": validation_signal_id,
-                            "snapshot_id": validation_snapshot_id,
-                            "trade_id": trade_id,
-                            "client_order_id": client_order_id,
-                            "whale_name": whale_name,
-                            "market_title": market_title[:80],
-                            "category": category,
-                            "side": event.order_side.name if hasattr(event, 'order_side') else 'BUY',
-                            "actual_fill_price": float(entry_price),
-                            "filled_size_usd": float(size_usd),
-                            "quantity": float(qty),
-                            "instrument_id": str(event.instrument_id)[:80],
-                            "detection_delay_ms": latencies["detection_delay_ms"],
-                            "execution_delay_ms": latencies["execution_delay_ms"],
-                            "fill_delay_ms": latencies["fill_delay_ms"],
-                            "total_latency_ms": latencies["total_latency_ms"],
-                            "slippage_bps": slippage["slippage_bps"],
-                            "fill_completion_pct": slippage["fill_completion_pct"],
-                            "ts_mono_ns": filled_ts,
-                        },
-                        correlation_id=validation_signal_id,
-                        mode=get_current_mode(),
-                        strategy_id="whale_follower",
-                        run_id=self._validation_run_id,
-                    )
-                    self.log.debug(
-                        f"Validation: TRADE_FILLED {trade_id[:8]}... latency={latencies['total_latency_ms']}ms "
-                        f"slippage={slippage['slippage_bps']:.1f}bps"
-                    )
-                    # ── Update latency fields in DB (written at entry with zeros) ───
-                    try:
-                        update_trade_latency_fields(
-                            trade_id=trade_id,
-                            detection_delay_ms=latencies["detection_delay_ms"],
-                            execution_delay_ms=latencies["execution_delay_ms"],
-                            fill_delay_ms=latencies["fill_delay_ms"],
-                            total_latency_ms=latencies["total_latency_ms"],
-                            slippage_bps=slippage["slippage_bps"],
-                            fill_completion_pct=slippage["fill_completion_pct"],
-                        )
-                    except Exception as lat_err:
-                        self.log.debug(f"Latency DB update failed: {lat_err}")
-                except Exception as e:
-                    self.log.warning(f"Validation event emission failed: {e}")
-
-            # Track fade positions for concurrency limiting
-            if pending.get("is_fade", False):
-                inst_key = str(event.instrument_id)
-                self._fade_positions.add(inst_key)
-                self.log.info(f"FADE position opened: {whale_name} | {inst_key[:50]}... ({len(self._fade_positions)}/{self._fade_max_concurrent})")
-
-            # ── Price Pump Tracking Hook ────────────────────────────────────────
-            # Subscribe this market to price pump monitoring so that price
-            # movements after the whale's entry can be tracked.
-            try:
-                from components.price_tracker import subscribe as _pt_subscribe
-
-                _pt_subscribe(
-                    market_id=cond_id,
-                    signal_id=trade_id,
-                    entry_price=entry_price,
-                    whale_address=whale_address,
-                    whale_name=whale_name,
-                    market_title=market_title,
-                )
-            except ImportError:
-                pass  # price_tracker not available yet
-            except Exception as _pt_err:
-                self.log.warning("Price tracker hook failed: %s", _pt_err)
-        except Exception as e:
-            self.log.error(f"[DB] Failed to log trade error={e}")
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-
+        """Delegate fill handling to StateManager."""
+        if self._state_mgr is not None:
+            self._state_mgr.on_order_filled(event)
+        else:
+            # Fallback: log warning if state manager not initialized
+            self.log.warning("StateManager not initialized, skipping fill handling")
     def _scan_whale_positions(self) -> None:
         """Poll known whale positions with rate limiting."""
         if not self._tracker or not self.config.auto_trade or self._daily_loss_breached:
@@ -1141,492 +848,36 @@ class WhaleFollower(Strategy):
             self.log.error(f"Trade processing error: {e}")
 
     def _llm_score_signal(self, signal: WhaleSignal) -> int:
-        """Score a whale signal using MiniMax cloud LLM.
-        
-        Circuit breaker: whale_api (protects MiniMax API calls from cascade failures).
-        """
-        import urllib.request
-        import urllib.error
-        import re
-        from strategies.wf_circuit_breaker import get_whale_api_breaker, CircuitBreakerOpen
-        market = getattr(signal, "market_title", "") or ""
-        whale = signal.whale_name or "unknown"
-        side = getattr(signal, "side", "?") or "?"
-        price = getattr(signal, "target_price", 0.5) or 0.5
-        category = getattr(signal, "market_category", "") or ""
-        prompt = (
-            f"Score this Polymarket signal 1-10. "
-            f"Market: {market[:80]}. Whale: {whale[:30]}. "
-            f"Side: {side} at {price:.3f}. Category: {category}."
+        """Delegate LLM signal scoring to llm_scorer module."""
+        return llm_score_signal(
+            signal,
+            whale_intel=self._whale_intel,
+            api_key=self.config.minimaxi_api_key if hasattr(self.config, "minimaxi_api_key") else None,
+            log_func=self.log.warning,
         )
-        if self._whale_intel:
-            intel = self._whale_intel.get(signal.whale_name)
-            if intel:
-                prompt += f" Classification: {intel['classification']}, Trust: {intel['trust_score']}/10."
-        if whale in ("unknown", "unknown whale", ""):
-            prompt += " Unknown whale, be skeptical."
-        system_prompt = "You are a scoring bot. Reply ONLY with a single digit 1-10. Nothing else."
-        payload = {
-            "model": "MiniMax-M2.7-highspeed",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": 500,
-            "temperature": 0.01
-        }
-        def _make_llm_request():
-            req = urllib.request.Request(
-                "https://api.minimaxi.com/v1/chat/completions",
-                data=json.dumps(payload).encode(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.config.minimaxi_api_key or os.environ.get('MINIMAX_API_KEY', '')}"
-                },
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                data = json.loads(resp.read().decode())
-                raw = data["choices"][0]["message"]["content"]
-                # Extract score after last </think> (MiniMax thinking tags)
-                last_close = raw.rfind("</think>")
-                if last_close != -1:
-                    text = raw[last_close+6:].strip()
-                else:
-                    text = raw.strip()
-                nums = re.findall(r'\d+', text)
-                score = int(nums[0]) if nums else 5
-                return max(1, min(10, score))
-
-        try:
-            breaker = get_whale_api_breaker()
-            score = breaker.call(_make_llm_request)
-            return score
-        except CircuitBreakerOpen:
-            self.log.warning("Whale API circuit breaker OPEN — skipping LLM scoring")
-            return 5
-        except Exception as e:
-            self.log.info(f"[LLM] Scoring failed for {whale}: {e} — using neutral score")
-            return 5
 
     def _on_signal(self, signal: WhaleSignal) -> None:
-        """Handle a whale signal from ANY subscribed market."""
-        self.log.info(f"[DEBUG] _on_signal called for {signal.condition_id[:20]}... cond={signal.confidence:.2f}")
-
-        # ── Whale Tiering Integration ────────────────────────────────────
-        alpha_score = getattr(signal, 'alpha_score', 50.0) or 50.0
-        whale_tags = getattr(signal, 'tags', '[]')
-        try:
-            tags_list = json.loads(whale_tags) if isinstance(whale_tags, str) else (whale_tags or [])
-        except (json.JSONDecodeError, TypeError):
-            tags_list = []
-
-        # Prefer dual-axis tier cache; fall back to alpha-score single-axis
-        dual_config = self._whale_tiering.get_cached_tier(signal.whale_name) if self._whale_tiering else {}
-        if dual_config.get("max_position_usd", 0) > 0 and dual_config["max_position_usd"] != 100:
-            cached = self._whale_tiering.get_raw_cache(signal.whale_name)
-            cap = cached.get("capital_tier", "?") if cached else "?"
-            prec = cached.get("precision_tier", "?") if cached else "?"
-            tier = f"{cap}+{prec}"
-            tier_config = dual_config
-        else:
-            tier = self._whale_tiering.get_tier(alpha_score) if self._whale_tiering else "unknown"
-            tier_config = self._whale_tiering.get_tier_config(alpha_score) if self._whale_tiering else {}
-
-        # Apply tier confidence threshold (overrides base config)
-        if self._whale_tiering and not self._whale_tiering.validate_confidence(signal.confidence, alpha_score, tags_list):
-            min_conf = tier_config.get("min_confidence", self.config.min_confidence)
-            self.log.info(
-                f"Signal below tier confidence threshold ({tier}): {signal.whale_name} "
-                f"(conf {signal.confidence:.0%} < {min_conf:.0%})"
-            )
-            return
-
-        # Apply tier edge_score threshold
-        edge_val = getattr(signal, 'edge_score', 0.0) or 0.0
-        if self._whale_tiering and not self._whale_tiering.validate_edge_score(edge_val, alpha_score):
-            min_edge = tier_config.get("min_edge_score", 0.15)
-            self.log.info(
-                f"Signal below tier edge_score threshold ({tier}): {signal.whale_name} "
-                f"(edge {edge_val:.2f} < {min_edge:.2f})"
-            )
-            return
-
-        # REJECT: intelligence-flagged sacrificial accounts
-        if self._whale_intel and self._whale_intel.should_hard_reject(signal.whale_name):
-            intel = self._whale_intel.get(signal.whale_name)
-            self.log.info(
-                f"REJECT intelligence-flagged sacrificial account: {signal.whale_name} "
-                f"(trust={intel['trust_score']}/10)"
-            )
-            return
-
-        # CHECK: blacklisted whales - allow fade engine to process if eligible
-        if signal.whale_name in WHALE_BLACKLIST:
-            # Check if fade engine wants to fade this blacklisted whale
-            if self._whale_intel and self._whale_intel.should_fade(signal.whale_name):
-                self.log.info(f"BLACKLISTED whale eligible for FADE: {signal.whale_name}")
-                # Continue to let fade detection at line 1024 handle it
-            else:
-                self.log.info(f"REJECT blacklisted whale: {signal.whale_name}")
-                return
-        mc = getattr(signal, "market_category", "") or ""
-        if signal.whale_name in SPORTS_WHALE_BLACKLIST and mc.lower() == "sports":
-            # Check if fade engine wants to fade this sports-blacklisted whale
-            if self._whale_intel and self._whale_intel.should_fade(signal.whale_name):
-                self.log.info(f"SPORTS-BLACKLISTED whale eligible for FADE: {signal.whale_name}")
-                # Continue to let fade detection at line 1024 handle it
-            else:
-                self.log.info(f"REJECT sports-blacklisted whale: {signal.whale_name}")
-                return
-
-        # REJECT: unknown whale signals with zero edge score (noise trades)
-        # Historical data shows 518 such trades lost -$2,532 total.
-        if edge_val == 0.0 and (not signal.whale_name or signal.whale_name.lower() in ("unknown", "unknown whale", "")):
-            wallet = getattr(signal, 'whale_address', '') or ''
-            wallet_info = f" wallet={wallet[:10]}..." if wallet else ""
-            self.log.info(
-                f"REJECT unknown whale zero edge: {signal.whale_name}{wallet_info} | "
-                f'market={getattr(signal, "market_title", "")[:40]} | '
-                f"conf={signal.confidence:.0%}"
-            )
-            return
-
-        # REJECT: non-whitelisted sports markets (whitelist Spread bets only)
-        mc = getattr(signal, 'market_category', '') or ''
-        if mc.lower() == 'sports':
-            title = getattr(signal, 'market_title', '') or ''
-            if any(re.search(p, title, re.IGNORECASE) for p in SPORTS_WHITELIST_PATTERNS):
-                self.log.info(f"ALLOW Spread: {title[:60]}")
-            elif any(re.search(p, title, re.IGNORECASE) for p in SPORTS_OU_BLACKLIST_PATTERNS):
-                self.log.info(f"REJECT O/U: {title[:60]}")
-                return
-            elif any(re.search(p, title, re.IGNORECASE) for p in SPORTS_VS_BLACKLIST_PATTERNS):
-                self.log.info(f"REJECT vs: {title[:60]}")
-                return
-            elif any(re.search(p, title, re.IGNORECASE) for p in SINGLE_TEAM_PATTERNS):
-                self.log.info(f"REJECT single-team: {title[:60]}")
-                return
-
-        # Apply tier-based position sizing
-        if self._whale_tiering:
-            tier_kelly = self._whale_tiering.apply_overrides(
-                tier_config, tags_list
-            ).get("kelly_multiplier", 1.0)
-            signal.suggested_size_usd = round(signal.suggested_size_usd * tier_kelly, 2)
-
-        # Whale intelligence Kelly adjustment
-        if self._whale_intel:
-            original_size = signal.suggested_size_usd
-            new_size, intel = self._whale_intel.adjust_size(signal.whale_name, signal.suggested_size_usd)
-            if intel:
-                signal.suggested_size_usd = new_size
-                self.log.info(
-                    f"Intel Kelly adjustment: {intel['classification']} "
-                    f"x{self._whale_intel.kelly_multiplier(intel['classification'])} "
-                    f"(${original_size:.0f} -> ${new_size:.0f})"
-                )
-
-        # LLM signal quality scoring (1700 Qwen3.5-9B, ~0.3s)
-        llm_score = self._llm_score_signal(signal)
-        # The original threshold was 4/10, meaning a score of 3 or lower would
-        # trigger a full rejection. The logic unintentionally filtered out
-        # legitimate high‑confidence signals (e.g., 75% confidence) that the
-        # MiniMax scoring model sometimes rates as 3. To preserve
-        # high‑confidence trade ideas while still rejecting genuinely low
-        # quality signals, we now reject only when the score is *strictly*
-        # less than 3. This effectively allows a score of 3/10 to pass.
-        if llm_score < 3:
-            self.log.info(f"REJECT LLM score={llm_score}/10: {signal.whale_name}")
-            return
-        self.log.info(f"LLM score={llm_score}/10: {signal.whale_name} | market={getattr(signal, 'market_title', '')[:40]}")
-
-        # Log signal with tier info
-        self.log.info(
-            f"SIGNAL [{signal.source.value}] [{tier.upper()}]: {signal.reason} | "
-            f"Confidence: {signal.confidence:.0%} | "
-            f"Suggested: ${signal.suggested_size_usd:,.0f}",
-            color=LogColor.YELLOW if signal.source == SignalSource.KNOWN_WHALE else LogColor.CYAN,
-        )
-
-        if not self.config.auto_trade:
-            self.log.debug("Auto-trade disabled, skipping signal execution")
-            return
-        if self._daily_loss_breached:
-            self.log.warning(
-                "Daily loss limit breached ($%.2f), skipping signal execution",
-                self._daily_pnl
-            )
-            return
-
-        # ── Category routing: live vs paper vs blocked ─────────────────────────
-        mc = getattr(signal, 'market_category', '') or ''
-        mc_lower = mc.lower()
-
-        # ── Routing: live vs paper vs blocked — segment-level routing ───────
-        # Blocked categories: hard reject
-        if mc_lower in BLOCKED_CATEGORIES:
-            self.log.info(f"BLOCKED category={mc_lower} | {signal.condition_id[:50]} — rejected")
-            return
-
-        # Whale address block: these whales consistently lose, never follow live
-        whale_name = getattr(signal, 'whale_name', '') or ''
-        if whale_name in BLOCKED_WHALE_ADDRESSES:
-            self.log.info(
-                f"BLOCKED whale={whale_name} | category={mc_lower} | "
-                f"{signal.condition_id[:50]} — blocked whale address"
-            )
-            return
-
-        # Determine eligibility: live, paper-only, or blocked
-        price_cap = LIVE_ENTRY_PRICE_CAPS.get(mc_lower)
-        trading_mode = os.getenv("TRADING_MODE", "")
-
-        if price_cap == 0.0:
-            # Category is paper-only (no profitable live segment)
-            if trading_mode == "live":
-                self.log.info(
-                    f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} — "
-                    f"live trading blocked for this category"
-                )
-                return
-            self.log.info(
-                f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} — "
-                f"sandbox fill"
-            )
-        elif price_cap is not None:
-            # Price-gated category (e.g. sports > $0.10 = paper)
-            entry_price = getattr(signal, 'target_price', 0.0) or 0.0
-            if entry_price > price_cap:
-                if trading_mode == "live":
-                    self.log.info(
-                        f"PAPER_GATE category={mc_lower} price=${entry_price:.4f} > cap=${price_cap:.2f} | "
-                        f"{signal.condition_id[:50]} — live blocked, paper fill"
-                    )
-                    # Continue to order entry but mark as paper trade
-                else:
-                    self.log.info(
-                        f"PAPER_GATE category={mc_lower} price=${entry_price:.4f} > cap=${price_cap:.2f} | "
-                        f"{signal.condition_id[:50]} — sandbox fill"
-                    )
-            else:
-                self.log.info(
-                    f"LIVE_ELIGIBLE category={mc_lower} price=${entry_price:.4f} <= cap=${price_cap:.2f} | "
-                    f"{signal.condition_id[:50]}"
-                )
-        else:
-            # No cap: always live-eligible
-            self.log.info(
-                f"LIVE_ELIGIBLE category={mc_lower} | {signal.condition_id[:50]}"
-            )
-
-        # ── FADE DETECTION: Should this signal be inverted? ──
-        is_fade = False
-        if self._whale_intel:
-            fade_intel = self._whale_intel.should_fade(signal.whale_name)
-            if fade_intel:
-                # Check fade concurrency limit
-                if len(self._fade_positions) >= self._fade_max_concurrent:
-                    self.log.info(f"FADE concurrency limit reached ({len(self._fade_positions)}/{self._fade_max_concurrent}), skipping: {signal.whale_name}")
-                    return
-                # Invert the signal: flip YES↔NO, buy↔sell
-                original_side = signal.side
-                original_outcome = signal.outcome
-                signal.side = "sell" if signal.side == "buy" else "buy"
-                signal.outcome = "NO" if signal.outcome == "YES" else "YES"
-                # Reduce size by 0.5x fade multiplier
-                original_size = signal.suggested_size_usd
-                signal.suggested_size_usd = round(original_size * 0.5, 2)
-                is_fade = True
-                self.log.info(
-                    f"FADE mode: {signal.whale_name} ({fade_intel['classification']}, trust={fade_intel['trust_score']}/10) "
-                    f"inverted {original_side}→{signal.side}, size ${original_size:.0f}→${signal.suggested_size_usd:.0f}"
-                )
-
-        # Dynamic subscription: every signal is processed regardless of pre-subscribed markets.
-        # The sandbox execution client has been patched to auto-fill any instrument,
-        # bypassing the exchange's matching engine limitation.
-        target_inst = self._ensure_instrument_for_signal(
-            signal.condition_id, signal.token_id, signal.outcome
-        )
-        if target_inst is None:
-            self.log.info(f"Could not get instrument for {signal.market_title[:40]}, skipping")
-            return
-
-        # Determine side
-        side = OrderSide.BUY if signal.side == "buy" else OrderSide.SELL
-
-        # Get whale's actual win rate for dynamic Kelly sizing
-        whale_wr = None
-        if self.config.use_dynamic_kelly and self._tracker:
-            # Look up whale by name in whales dict (has WhaleIdentity objects)
-            for w in self._tracker.whales.values():
-                if w.name == signal.whale_name:
-                    whale_wr = w.win_rate
-                    break
-            if whale_wr is None:
-                self.log.debug(f"Whale '{signal.whale_name}' not found in tracker, using default Kelly")
-
-        # ── Phase 1: SIGNAL_GENERATED event + snapshot freeze ──────────────────────────────────────
-        # Emit event and freeze decision inputs AFTER validation passes, BEFORE any future data leaks in
-        signal_generated_ts = time.monotonic_ns()
-        snapshot_id = ""
-        validation_signal_id = getattr(signal, '_validation_signal_id', str(uuid.uuid4()))
-        
-        if _validation_available and log_event and EventType:
-            try:
-                # Freeze snapshot BEFORE order submission (critical for replay validation)
-                if freeze_snapshot:
-                    try:
-                        # Gather market state from orderbook if available
-                        market_state = {
-                            "price": float(signal.target_price),
-                            "side": signal.side,
-                            "confidence": float(signal.confidence),
-                            "edge_score": float(getattr(signal, 'edge_score', 0)),
-                        }
-                        # Minimal orderbook snapshot (top level only)
-                        orderbook = {"bid": float(signal.target_price), "ask": float(signal.target_price)}
-                        whale_metrics = {
-                            "whale_name": signal.whale_name,
-                            "suggested_size_usd": float(signal.suggested_size_usd),
-                            "classification": getattr(signal, 'classification', 'unknown'),
-                        }
-                        
-                        snapshot = freeze_snapshot(
-                            signal_id=validation_signal_id,
-                            market_state=market_state,
-                            orderbook=orderbook,
-                            whale_metrics=whale_metrics,
-                            classification=getattr(signal, 'classification', 'unknown'),
-                            confidence=float(signal.confidence),
-                            market_regime="neutral",
-                            strategy_version="v1.0",
-                        )
-                        snapshot_id = snapshot.snapshot_id
-                        self.log.debug(f"Validation: Snapshot frozen {snapshot_id[:8]}...")
-                    except Exception as snap_err:
-                        self.log.warning(f"Snapshot freeze failed: {snap_err}")
-                
-                # Register signal in trade context for correlation
-                whale_trade_ts = self._signal_timestamps.get(validation_signal_id, signal_generated_ts)
-                if self._validation_context:
-                    try:
-                        self._validation_context.register_signal(
-                            signal_id=validation_signal_id,
-                            whale_trade_ts=whale_trade_ts,
-                            signal_detected_ts=signal_generated_ts,  # Use signal_generated as proxy
-                            signal_generated_ts=signal_generated_ts,
-                            snapshot_id=snapshot_id,
-                            side=signal.side.upper(),
-                        )
-                    except Exception as ctx_err:
-                        self.log.warning(f"Trade context registration failed: {ctx_err}")
-                
-                # Emit SIGNAL_GENERATED event
-                log_event(
-                    event_type=EventType.SIGNAL_GENERATED,
-                    payload={
-                        "signal_id": validation_signal_id,
-                        "snapshot_id": snapshot_id,
-                        "whale_name": signal.whale_name,
-                        "market_title": getattr(signal, 'market_title', '')[:80],
-                        "market_category": getattr(signal, 'market_category', ''),
-                        "side": signal.side,
-                        "target_price": float(signal.target_price),
-                        "suggested_size_usd": float(signal.suggested_size_usd),
-                        "confidence": float(signal.confidence),
-                        "edge_score": float(getattr(signal, 'edge_score', 0)),
-                        "llm_score": llm_score,
-                        "tier": tier,
-                        "is_fade": is_fade,
-                        "whale_win_rate": float(whale_wr or 0.55),
-                        "ts_mono_ns": signal_generated_ts,
-                    },
-                    correlation_id=validation_signal_id,
-                    mode=get_current_mode(),
-                    strategy_id="whale_follower",
-                    run_id=self._validation_run_id,
-                )
-                self.log.debug(f"Validation: SIGNAL_GENERATED {validation_signal_id[:8]}... snapshot={snapshot_id[:8] if snapshot_id else 'none'}")
-            except Exception as e:
-                self.log.warning(f"Validation event emission failed: {e}")
-        
-        # Pass signal_id and snapshot_id to enter_position for correlation
-        signal._validation_signal_id = validation_signal_id
-        signal._validation_snapshot_id = snapshot_id
-
-        self.enter_position(
-            side, signal.target_price, signal.suggested_size_usd,
-            instrument_id=target_inst, whale_win_rate=whale_wr,
-            whale_name=signal.whale_name,
-            market_title=signal.market_title,
-            market_category=getattr(signal, 'market_category', 'Unknown'),
-            whale_address=getattr(signal, 'whale_address', '') or '',
-            edge_score=getattr(signal, 'edge_score', 0.0) or 0.0,
-            confidence=signal.confidence or 0.0,
-            entry_reason=signal.reason or "",
-            is_fade=is_fade,
-            _validation_signal_id=validation_signal_id,
-            _validation_snapshot_id=snapshot_id,
-        )
-
-        # Update gap monitoring state
-        self._update_gap_state(signal)
+        """Delegate signal handling to SignalHandler."""
+        if self._signal_handler is not None:
+            self._signal_handler.handle_signal(signal)
 
     def _find_instrument(self, condition_id: str) -> InstrumentId | None:
-        """Find the subscribed instrument matching a condition_id."""
-        for inst_id in self.config.instrument_ids:
-            if str(inst_id).split("-")[0] == condition_id:
-                return inst_id
+        """Delegate instrument lookup to SignalHandler."""
+        if self._signal_handler is not None:
+            return self._signal_handler._find_instrument(condition_id)
         return None
 
     def _ensure_instrument_for_signal(self, condition_id: str, token_id: str, outcome: str) -> InstrumentId | None:
-        """Fetch market metadata and create instrument for a signal's market."""
-        inst_id = InstrumentId.from_str(f"{condition_id}-{token_id}.POLYMARKET")
-        existing = self.cache.instrument(inst_id)
-        if existing is not None:
-            return inst_id
-        try:
-            market_info = self._clob.get_market(condition_id=condition_id)
-            if not market_info or not market_info.get("active", False):
-                self.log.info(f"Signal market inactive: {condition_id[:20]}...")
-                return None
-            tokens = market_info.get("tokens", [])
-            token_data = None
-            for t in tokens:
-                if t.get("token_id") == token_id:
-                    token_data = t
-                    break
-            if not token_data:
-                return None
-            instrument = parse_polymarket_instrument(
-                market_info=market_info,
-                token_id=token_data["token_id"],
-                outcome=token_data["outcome"],
-            )
-            self.cache.add_instrument(instrument)
-            # Subscribe to quote ticks so dynamic instruments are checked by
-            # _check_all_positions() Phase 2 stop-loss/take-profit/resolution logic
-            self.subscribe_quote_ticks(inst_id)
-            self.log.info(f"Registered dynamic instrument: {instrument.id.value[:50]} ...")
-            return inst_id
-        except Exception as e:
-            self.log.error(f"Failed to register instrument for {condition_id[:20]}...: {e}")
-            return None
+        """Delegate instrument resolution to SignalHandler."""
+        if self._signal_handler is not None:
+            return self._signal_handler._ensure_instrument_for_signal(condition_id, token_id, outcome)
+        return None
 
     def _current_gross_exposure(self) -> float:
-        """Calculate total notional exposure of all open positions as max loss amount."""
-        total = 0.0
-        for inst_id in self.config.instrument_ids:
-            positions = self.cache.positions_open(instrument_id=inst_id)
-            if positions:
-                for pos in positions:
-                    # For BinaryOption instruments: max loss = cost basis = quantity * entry_price
-                    qty = pos.quantity.as_double() if hasattr(pos.quantity, 'as_double') else float(pos.quantity)
-                    avg_open = pos.avg_px_open.as_double() if hasattr(pos.avg_px_open, 'as_double') else 0.0
-                    total += qty * avg_open
-        return total
+        """Delegate to PositionManager."""
+        if self._position_mgr is not None:
+            return self._position_mgr._current_gross_exposure()
+        return 0.0
 
     def enter_position(
         self, side: OrderSide, price: float, whale_amount: float = 0,
@@ -1636,847 +887,84 @@ class WhaleFollower(Strategy):
         entry_reason: str = "", is_fade: bool = False,
         _validation_signal_id: str = "", _validation_snapshot_id: str = "",
     ) -> None:
-        """Enter Kelly-sized position."""
-        # ── Phase 1 Risk Control: Kill Switch Check ─────────────────────────────
-        if self._kill_switch_breached:
-            self.log.warning(f"KILL_SWITCH active - rejecting signal for {market_title[:40]}")
-            return
-
-        inst_id = instrument_id or self.config.instrument_id
-        
-        # Whale name will be stored after order creation (using order.client_order_id)
-        
-        instrument = self.cache.instrument(inst_id)
-        if instrument is None:
-            return
-
-        # ── Minimum price filter — reject near-zero EV long shots ─────────────────
-        if price < MIN_ENTRY_PRICE:
-            self.log.info(
-                f"MIN_PRICE_REJECTED | {market_title[:50]} | "
-                f"price=${price:.4f} < ${MIN_ENTRY_PRICE} | whale={whale_name}"
+        """Delegate position entry to PositionManager."""
+        if self._position_mgr is not None:
+            self._position_mgr.enter_position(
+                side=side, price=price, whale_amount=whale_amount,
+                instrument_id=instrument_id, whale_win_rate=whale_win_rate,
+                whale_name=whale_name, market_title=market_title,
+                market_category=market_category, whale_address=whale_address,
+                edge_score=edge_score, confidence=confidence,
+                entry_reason=entry_reason, is_fade=is_fade,
+                _validation_signal_id=_validation_signal_id,
+                _validation_snapshot_id=_validation_snapshot_id,
             )
-            return
-
-        # ── Confidence filter — reject low-confidence signals ────────────────
-        if confidence < 0.15:
-            self.log.info(
-                f"REJECT confidence={confidence:.2f} < 0.15 | {inst_id}"
-            )
-            return
-
-        # Check existing position via cache (pre-subscribed instruments)
-        open_positions = self.cache.positions_open(instrument_id=inst_id)
-        if open_positions and open_positions[0].quantity.as_double() != 0:
-            self.log.info(f"Already have position in {inst_id}, skipping")
-            return
-        
-        # Dedup check against our own position registry (covers dynamic instruments)
-        inst_key = str(inst_id)
-        if inst_key in self._open_positions:
-            existing = self._open_positions[inst_key]
-            self.log.info(
-                f"Position already tracked: {existing['whale_name']} | "
-                f"{inst_key[:50]}... | held {time.time()-existing['entry_time']:.0f}s, skipping"
-            )
-            return
-
-        # Re-entry cooldown — don't re-enter same instrument within 5 minutes of exit
-        last_exit = self._last_exit_time.get(str(inst_id), 0)
-        if time.time() - last_exit < RE_ENTRY_COOLDOWN_SECS:
-            self.log.info(f"Re-entry cooldown for {inst_id}: {time.time() - last_exit:.0f}s < {RE_ENTRY_COOLDOWN_SECS}s, skipping")
-            return
-
-        # Hard balance guard — check available USDC.e funds before sizing
-        USDC_e = Currency.from_str("USDC.e")
-        if instrument.venue:
-            account = self.portfolio.account(instrument.venue)
         else:
-            account = self.portfolio.account()
-        if account is None:
-            self.log.warning("Cash account not found – skipping order")
-            return
-        available = account.balance_free(USDC_e).as_double()
-
-        # Kelly sizing with dynamic whale win rate (edge_score calibrated)
-        # Pass available_balance so effective bankroll = min(config, available)
-        # This prevents AccountBalanceNegative by auto-shrinking position sizes
-        size_usd = self._kelly_size(price, whale_win_rate=whale_win_rate, edge_score=edge_score, available_balance=available, market_category=market_category)
-        if size_usd <= 0:
-            wr_note = f" (whale_wr={whale_win_rate:.0%})" if whale_win_rate else " (fixed_wr=55%)"
-            self.log.info(f"No Kelly edge{wr_note}, skipping")
-            return
-
-        # ── Phase 4: Per-category strategy position check ──────────────────
-        strategy = self._strategies.get(market_category.lower())
-        if strategy is not None and not strategy.can_accept_position():
-            self.log.info(
-                f"({market_category}) can_accept_position=False — cap reached, "
-                f"skipping: {whale_name} | {inst_key[:50]}..."
-            )
-            return
-
-        # Liquidity-based size adjustment (Track A)
-        size_usd = self._adjust_size_for_liquidity(size_usd, inst_id)
-
-        # ── HARD CAP: enforce max_single_position_pct AFTER liquidity adjustment
-        # Must use validation_capital_base (like check_position_limits does) to ensure
-        # the cap matches the actual limit. Using bankroll would give a $200 cap
-        # while the limit is $20 (2% of $1000 validation capital).
-        max_single_pct = getattr(self.config, "max_single_position_pct", 0.02)
-        capital = (
-            self.config.validation_capital_base
-            if self.config.validation_capital_base > 0
-            else self.config.bankroll
-        )
-        hard_cap = capital * max_single_pct
-        if size_usd > hard_cap:
-            size_usd = hard_cap
-
-        # ── Phase 4: Request capital from the pool ───────────────────────
-        capital_requested = False
-        if strategy is not None:
-            granted = strategy.request_capital(size_usd)
-            if granted <= 0:
-                self.log.info(
-                    f"({market_category}) pool exhausted — request_capital(${size_usd:.0f}) "
-                    f"returned ${granted:.0f}, skipping: {whale_name}"
-                )
-                return
-            if granted < size_usd:
-                self.log.info(
-                    f"({market_category}) partial capital grant: ${granted:.0f} < desired ${size_usd:.0f}, "
-                    f"adjusting from ${size_usd:.0f} to ${granted:.0f}"
-                )
-                size_usd = granted
-            capital_requested = True
-
-        # Brief guard: if even the computed size exceeds available, skip
-        if size_usd > available:
-            self.log.info(
-                f"Size ${size_usd:,.2f} exceeds available ${available:,.2f}, skipping"
-            )
-            return
-
-        # ── Phase 1 Risk Control: Position/Exposure Limits ───────────────────────
-        # Check MAX_SINGLE_POSITION, MAX_TOTAL_EXPOSURE, MAX_MARKET_EXPOSURE
-        allowed, reason = check_position_limits(
-            config=self.config,
-            cache=self.cache,
-            instrument_id=inst_id,
-            proposed_size_usd=size_usd,
-            open_positions=self._open_positions,
-            log=self.log,
-            run_id=self._validation_run_id,
-            mode=get_current_mode(),
-        )
-        if not allowed:
-            # ── Phase 4: Release pool capital if it was reserved ──────────
-            if capital_requested and strategy is not None:
-                strategy.release_capital(0.0, size_usd)
-            # Position limits breached - trigger kill switch
-            trigger_kill_switch(
-                config=self.config,
-                cache=self.cache,
-                log=self.log,
-                reason=reason,
-                run_id=self._validation_run_id,
-                mode=get_current_mode(),
-                strategy_id="whale_follower",
-                cancel_orders_func=self.cancel_all_open_orders,
-            )
-            self._kill_switch_breached = True
-            return
-
-        # ── Phase 4: Max open positions check (strategy cap via can_accept) ──
-        # If a per-category strategy is wired, can_accept_position() already
-        # enforced the per-category max. Only fall through to the global cap
-        # for categories without a registered strategy.
-        if strategy is None:
-            open_count = len(self._open_positions)
-            max_positions = self.config.max_open_positions
-            if open_count >= max_positions:
-                self.log.info(
-                    f"Max positions reached ({open_count}/{max_positions}), skipping"
-                )
-                return
-        # Low‑cash alert: warn if free balance drops below 20 % of bankroll
-        if available < LOW_CASH_ALERT_PCT * self.config.bankroll:
-            self.log.warning(
-                f"Low cash alert: free USDC.e ${available:,.2f} < {LOW_CASH_ALERT_PCT:.0%} of bankroll (${self.config.bankroll:,.2f})"
-            )
-
-        qty = instrument.make_qty(Decimal(str(size_usd / price)), round_down=True)
-        if qty.as_decimal() <= 0:
-            self.log.debug("Calculated quantity is zero, skipping order entry")
-            return
-
-        order = self.order_factory.market(
-            instrument_id=inst_id,
-            order_side=side,
-            quantity=qty,
-            time_in_force=TimeInForce.GTC,
-        )
-
-        # Store whale metadata keyed by the unique client_order_id for later lookup
-        if whale_name:
-            pass
-        else:
-            import logging as _lg
-            _lg.getLogger("whale_follower").warning(
-                f"enter_position called with empty whale_name for {market_title[:40]} "
-                f"(inst={inst_id[:50]}...) - trade will be stored as 'unknown'"
-            )
-        # Ensure pending metadata is always recorded for the fill handler.
-        # Fallback to a generic whale name if missing to avoid losing position tracking.
-        pending_name = whale_name if whale_name else f"unknown_whale_{uuid.uuid4().hex[:8]}"
-        self._pending_whales[str(order.client_order_id)] = {
-            "whale_name": pending_name,
-            "market_title": market_title,
-            "category": market_category,
-            "whale_address": whale_address,
-            "edge_score": edge_score,
-            "confidence": confidence,
-            "entry_reason": entry_reason,
-            "kelly_fraction": self.config.kelly_fraction,
-            "entry_price": price,
-            "is_fade": is_fade,
-            "_validation_signal_id": _validation_signal_id,
-            "_validation_snapshot_id": _validation_snapshot_id,
-        }
-        # Register intended price for PaperExecClient to use at fill time
-        from components.paper_execution import set_fill_price
-        set_fill_price(str(inst_id), price)
-        whale_note = f" (following ${whale_amount:,.0f} whale)" if whale_amount else ""
-        self.log.info(
-            f"ENTER {side.name}: {qty.as_decimal():.0f} shares @ {price:.4f} "
-            f"= ${size_usd:,.2f}{whale_note} | {inst_id}"
-        )
-        self.submit_order(order)
-        
-        # ── Phase 1: TRADE_SUBMITTED event ──────────────────────────────────────
-        # Emit event after order submission for latency tracking
-        submitted_ts = time.monotonic_ns()
-        
-        if _validation_available and log_event and EventType and _validation_signal_id:
-            try:
-                # Register submission in trade context
-                if self._validation_context:
-                    try:
-                        self._validation_context.register_submission(
-                            client_order_id=str(order.client_order_id),
-                            signal_id=_validation_signal_id,
-                            submitted_ts=submitted_ts,
-                            intended_price=float(price),
-                            intended_size=float(size_usd),
-                        )
-                    except Exception as ctx_err:
-                        self.log.warning(f"Trade context submission registration failed: {ctx_err}")
-                
-                # Emit TRADE_SUBMITTED event
-                log_event(
-                    event_type=EventType.TRADE_SUBMITTED,
-                    payload={
-                        "signal_id": _validation_signal_id,
-                        "snapshot_id": _validation_snapshot_id,
-                        "client_order_id": str(order.client_order_id),
-                        "whale_name": whale_name,
-                        "market_title": market_title[:80],
-                        "side": side.name,
-                        "intended_price": float(price),
-                        "intended_size_usd": float(size_usd),
-                        "quantity": float(qty.as_decimal()),
-                        "instrument_id": str(inst_id)[:80],
-                        "ts_mono_ns": submitted_ts,
-                    },
-                    correlation_id=_validation_signal_id,
-                    mode=get_current_mode(),
-                    strategy_id="whale_follower",
-                    run_id=self._validation_run_id,
-                )
-                self.log.debug(f"Validation: TRADE_SUBMITTED {str(order.client_order_id)[:12]}... signal={_validation_signal_id[:8]}")
-            except Exception as e:
-                self.log.warning(f"Validation event emission failed: {e}")
-        
-        self._trades_this_scan += 1
+            self.log.warning("PositionManager not initialized, skipping entry")
 
     def _fetch_real_midpoint(self, inst_key: str) -> float | None:
-        """Fetch the real market midpoint price from Polymarket CLOB API.
-        Returns the midpoint price or None if API fails.
-        """
-        from strategies.wf_market_data import fetch_real_midpoint
-        return fetch_real_midpoint(inst_key)
+        """Delegate to PositionManager."""
+        if self._position_mgr is not None:
+            return self._position_mgr._fetch_real_midpoint(inst_key)
+        return None
 
     def _resolve_exit_price(self, pos_info: dict) -> float:
-        """Determine exit price using REAL market data (no random walk).
-
-        Priority:
-        1. Market resolved -> resolution price ($1.00 if won, $0.00 if lost)
-        2. CLOB API midpoint -> actual trading price
-        3. Fallback: deterministic estimate (edge-based drift, no Gaussian noise)
-        """
-        from strategies.wf_market_data import resolve_exit_price
-        from components.resolution_poller import get_market_resolution, calculate_actual_pnl
-        return resolve_exit_price(
-            pos_info=pos_info,
-            instrument_id_str=pos_info.get("inst_key", ""),
-            get_market_resolution=get_market_resolution,
-            calculate_actual_pnl=calculate_actual_pnl,
-            log_func=self.log.info,
-        )
+        """Delegate to PositionManager."""
+        if self._position_mgr is not None:
+            return self._position_mgr._resolve_exit_price(pos_info)
+        return pos_info.get("entry_price", 0.5)
 
     def exit_position(self, instrument_id: InstrumentId = None, exit_reason: str = "manual") -> None:
-        """Close current position with P&L tracking and DB update."""
-        import sqlite3, uuid
-        from pathlib import Path
-        from datetime import datetime, timezone
-        
-        inst_id = instrument_id or self.config.instrument_id
-        inst_key = str(inst_id)
-        
-        # ── POSITION CACHE DEDUP: Skip if already exited this position ──
-        if inst_key in self._exited_positions:
-            self.log.debug(f"Position already exited, skipping: {inst_key[:50]}...")
-            return
-        
-        open_positions = self.cache.positions_open(instrument_id=inst_id)
-        if not open_positions or open_positions[0].quantity.as_double() == 0:
-            return
-        pos = open_positions[0]
-        qty = pos.quantity.as_double()
-        
-        # Look up position info from our registry
-        pos_info = self._open_positions.pop(inst_key, {})
-        pos_info["inst_key"] = inst_key
-        save_open_positions(self._open_positions)
-        
-        # Simulate exit price
-        entry_price = pos_info.get("entry_price", 0.50)
-        entry_time = pos_info.get("entry_time", time.time())
-        duration = time.time() - entry_time
-        exit_price = self._resolve_exit_price(pos_info)
-        
-        # Calculate P&L
-        side = pos_info.get("side", "BUY")
-        if side == "BUY":
-            realized_pnl = qty * (exit_price - entry_price)
+        """Delegate position exit to PositionManager."""
+        if self._position_mgr is not None:
+            self._position_mgr.exit_position(instrument_id=instrument_id, exit_reason=exit_reason)
         else:
-            realized_pnl = qty * (entry_price - exit_price)  # SELL = short
-        realized_return = (exit_price - entry_price) / entry_price if side == "BUY" else (entry_price - exit_price) / entry_price
-        
-        # Sanity cap: P&L return exceeding ±200% is almost certainly a sandbox pricing artifact
-        # (e.g., entry fills at $0.005 on a $0.50 market → 5,000%+ returns)
-        # Cap at ±200% and log warning so dashboard metrics stay realistic
-        if abs(realized_return) > MAX_SANE_RETURN:
-            self.log.warning(
-                f"[SANITY CAP] {inst_key[:50]}... return={realized_return:+.2%} exceeds ±{MAX_SANE_RETURN:.0%} — "
-                f"capping from ${realized_pnl:+.2f} to capped value. "
-                f"entry=${entry_price:.4f} exit=${exit_price:.4f} qty={qty:.0f} side={side}"
-            )
-            # Scale P&L to return ±200% while preserving direction
-            # For both BUY and SELL: capped_pnl = qty * entry * MAX_SANE_RETURN (directional)
-            realized_pnl = qty * entry_price * MAX_SANE_RETURN * (1 if realized_pnl >= 0 else -1)
-            realized_return = MAX_SANE_RETURN if realized_pnl >= 0 else -MAX_SANE_RETURN
-            self.log.info(f"[SANITY CAP] Capped P&L: ${realized_pnl:+.2f} ({realized_return:+.2%})")
-        
-        # Update DB row with exit details
-        trade_id = pos_info.get("trade_id", "")
-        if trade_id:
-            try:
-                db_path = Path(__file__).parent.parent / "research" / "trades.db"
-                conn = sqlite3.connect(str(db_path))
-                conn.execute("PRAGMA busy_timeout=5000")
-                conn.execute("""
-                    UPDATE trades SET
-                        exit_price = ?,
-                        realized_pnl = ?,
-                        realized_return = ?,
-                        exit_reason = ?,
-                        duration_seconds = ?
-                    WHERE trade_id = ?
-                """, (exit_price, realized_pnl, realized_return, exit_reason, duration, trade_id))
-                conn.commit()
-                try:
-                    conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
-                except Exception:
-                    pass
-                conn.close()
-            except Exception as e:
-                self.log.error(f"[DB] Failed to update exit P&L: {e}")
-        
-        # ── Phase 1: TRADE_CLOSED event ──────────────────────────────────────
-        # Emit event after position exit for complete trade lifecycle tracking
-        closed_ts = time.monotonic_ns()
-        
-        if _validation_available and log_event and EventType and trade_id:
-            try:
-                # Emit TRADE_CLOSED event
-                log_event(
-                    event_type=EventType.TRADE_CLOSED,
-                    payload={
-                        "trade_id": trade_id,
-                        "whale_name": pos_info.get("whale_name", ""),
-                        "market_title": (pos_info.get("market_title", "") or "")[:80],
-                        "category": category,
-                        "side": side,
-                        "entry_price": float(entry_price),
-                        "exit_price": float(exit_price),
-                        "quantity": float(qty),
-                        "realized_pnl": float(realized_pnl),
-                        "realized_return": float(realized_return),
-                        "duration_seconds": float(duration),
-                        "exit_reason": exit_reason,
-                        "instrument_id": inst_key[:80],
-                        "ts_mono_ns": closed_ts,
-                    },
-                    correlation_id=trade_id,
-                    mode=get_current_mode(),
-                    strategy_id="whale_follower",
-                    run_id=self._validation_run_id,
-                )
-                self.log.debug(f"Validation: TRADE_CLOSED {trade_id[:8]}... PnL=${realized_pnl:+.2f}")
-                
-                # Clear trade context for this position
-                if self._validation_context:
-                    try:
-                        # Find client_order_id from signal_id (reverse lookup)
-                        # We don't have direct mapping, so we skip context clearing
-                        # Context will be cleared on next signal or remain for analysis
-                        pass
-                    except Exception:
-                        pass
-            except Exception as e:
-                self.log.warning(f"Validation event emission failed: {e}")
-        
-        # Nautilus close
-        self.close_position(pos)
-        self._last_exit_time[inst_key] = time.time()
-        
-        # ── POSITION CACHE DEDUP: Mark as exited ──
-        self._exited_positions.add(inst_key)
-        
-        # Update daily P&L (exclude paper trades — they don't count toward daily loss limit)
-        # paper_trade = 1 if category is paper-only (price_cap == 0.0) or price-gated and entry > cap
-        category = pos_info.get('category', '') or ''
-        cat_lower = category.lower()
-
-        # ── Phase 4: Release capital back to the pool ─────────────────────
-        strat = self._strategies.get(cat_lower)
-        if strat is not None:
-            position_size = pos_info.get("size", qty * entry_price)
-            strat.release_capital(realized_pnl, position_size)
-
-        price_cap = LIVE_ENTRY_PRICE_CAPS.get(cat_lower, None)
-        entry_price = pos_info.get('entry_price', 0.0) or 0.0
-        is_paper = (price_cap == 0.0) or (price_cap is not None and price_cap > 0.0 and entry_price > price_cap)
-        if not is_paper:
-            self._daily_pnl += realized_pnl
-            if self._daily_pnl <= -self._daily_loss_limit:
-                self._daily_loss_breached = True
-                self.log.warning(
-                    f"Daily loss limit breached: ${self._daily_pnl:.2f} <= -${self._daily_loss_limit:.2f}"
-                )
-        else:
-            self.log.info(
-                f"PAPER P&L excluded from daily limit: category={cat_lower} | "
-                f"price=${entry_price:.4f} | pnl=${realized_pnl:+.2f}",
-            )
-
-        # Persist daily state to disk so kill switches survive restarts
-        save_daily_state(
-            daily_pnl=self._daily_pnl,
-            daily_pnl_date=self._daily_pnl_date,
-            daily_loss_breached=self._daily_loss_breached,
-        )
-
-        pnl_sign = "+" if realized_pnl >= 0 else ""
-        self.log.info(
-            f"EXIT {exit_reason}: {qty:.0f} shrs @ ${exit_price:.4f} | "
-            f"PnL: ${pnl_sign}{realized_pnl:.2f} ({realized_return:+.2%}) | "
-            f"held {duration:.0f}s | daily_pnl=${self._daily_pnl:+.2f} | "
-            f"{inst_key[:40]}..."
-        )
+            self.log.warning("PositionManager not initialized, skipping exit")
 
     def exit_all_positions(self) -> None:
-        """Close ALL open positions (emergency stop or daily loss limit)."""
-        exited = 0
-        for inst_id in self.config.instrument_ids:
-            open_positions = self.cache.positions_open(instrument_id=inst_id)
-            if open_positions and open_positions[0].quantity.as_double() != 0:
-                self.exit_position(inst_id, exit_reason="emergency_exit_all")
-                exited += 1
-
-        # Also close dynamically subscribed instruments
-        if hasattr(self, '_dynamic_subscriptions'):
-            for inst_id_str in list(self._dynamic_subscriptions.keys()):
-                inst_id = InstrumentId.from_str(inst_id_str)
-                pos = self.cache.position(inst_id)
-                if pos and pos.is_open:
-                    self.exit_position(inst_id, exit_reason="emergency_exit_all")
-                    exited += 1
-
-        self.log.warning(f"Emergency exit complete: {exited} positions closed")
+        """Delegate emergency exit to PositionManager."""
+        if self._position_mgr is not None:
+            self._position_mgr.exit_all_positions()
+        else:
+            self.log.warning("PositionManager not initialized, skipping emergency exit")
 
     def cancel_all_open_orders(self) -> None:
-        """Cancel ALL pending open orders (kill switch).
-
-        Phase 1 risk control: when position limits are breached,
-        cancel all pending orders to stop trading immediately.
-        """
-        canceled_count = 0
-        for order in self.cache.orders_open():
-            try:
-                self.cancel_order(order)
-                canceled_count += 1
-                self.log.info(f"Canceled order {order.client_order_id}")
-            except Exception as e:
-                self.log.error(f"Failed to cancel order {order.client_order_id}: {e}")
-        self.log.info(f"KILL_SWITCH: canceled {canceled_count} open orders")
-
+        """Cancel all pending open orders (kill switch)."""
+        if self._position_mgr is not None:
+            self._position_mgr.cancel_all_open_orders()
 
     def _recover_open_positions(self) -> None:
-        """Reload unfinished positions from DB on restart.
-        
-        On crash recovery: reads trades without exit_reason from the trades DB,
-        reconstructs the _open_positions dict so the exit timer can check them.
-        """
-        try:
-            import sqlite3
-            from pathlib import Path
-            
-            db_path = Path(__file__).parent.parent / "research" / "trades.db"
-            if not db_path.exists():
-                self.log.info("[RECOVER] No trades DB found, skipping recovery")
-                return
-            
-            conn = sqlite3.connect(str(db_path))
-            rows = conn.execute(
-                "SELECT instrument_id, trade_id, whale_name, market_title, category, "
-                "side, entry_price, position_size_usd, condition_id, edge_score "
-                "FROM trades WHERE exit_reason IS NULL "
-                "AND instrument_id IS NOT NULL "
-                "ORDER BY timestamp"
-            ).fetchall()
-            conn.close()
-            
-            if not rows:
-                self.log.info("[RECOVER] No orphan positions to recover")
-                return
-            
-            recovered = 0
-            for row in rows:
-                inst_id, trade_id, whale_name, market_title, category, side, entry_price, size, cond_id, edge_score = row
-                try:
-                    from nautilus_trader.model.identifiers import InstrumentId
-                    inst_key = str(InstrumentId.from_str(inst_id))
-                except Exception:
-                    inst_key = inst_id  # fallback: use raw string
-                
-                if inst_key not in self._open_positions:
-                    self._open_positions[inst_key] = {
-                        "whale_name": whale_name or "unknown",
-                        "market_title": market_title or inst_id[:80],
-                        "category": category or "Unknown",
-                        "side": side or "BUY",
-                        "entry_price": entry_price or 0.5,
-                        "size": size or 0.0,
-                        "entry_time": 0.0,  # unknown, let exit timer decide
-                        "trade_id": trade_id,
-                        "condition_id": cond_id or "",
-                        "venue_position_id": "",
-                        "edge_score": edge_score or 0.0,
-                    }
-                    recovered += 1
-            
-            self.log.info(
-                f"[RECOVER] Recovered {recovered} open positions from DB "
-                f"(total tracked: {len(self._open_positions)})"
-            )
-        except Exception as e:
-            self.log.error(f"[RECOVER] Failed to recover open positions: {e}")
+        """Delegate position recovery to StateManager."""
+        if self._state_mgr is not None:
+            self._state_mgr.recover_open_positions()
+        else:
+            self.log.warning("StateManager not initialized, skipping recovery")
 
     def _check_all_positions(self) -> None:
-        """Check stop-loss, take-profit, resolution, and duration exits for ALL open positions."""
-        now = time.time()
-        
-        # Phase 1: Duration-based exit — close positions held past max_hold_hours
-        # Issue 3 fix: only force-close at max_hold if market is resolved OR max_hold
-        # is significantly exceeded (2x). Otherwise let the resolution poller handle exit.
-        max_hold = self.config.max_hold_hours
-        max_hold_secs = max_hold * 3600
-        force_close_threshold = max_hold_secs * 2  # 2x = significantly exceeded
-        expired = [
-            k for k, v in self._open_positions.items()
-            if now - v.get("entry_time", 0) > max_hold_secs
-        ]
-        for inst_key in expired:
-            try:
-                inst_id = InstrumentId.from_str(inst_key)
-                # Check if market is already resolved or max_hold is significantly exceeded
-                from strategies.wf_market_data import should_exit_for_resolution
-                market_resolved = should_exit_for_resolution(inst_key, log_func=self.log.warning)
-                age = now - self._open_positions[inst_key].get("entry_time", 0)
-                significantly_exceeded = age > force_close_threshold
-                if market_resolved or significantly_exceeded:
-                    self.exit_position(inst_id, exit_reason="max_hold")
-                else:
-                    self.log.info(
-                        f"HOLD {inst_key[:50]}...: age={age/3600:.1f}h > max_hold={max_hold}h "
-                        f"but market not resolved and not significantly exceeded (2x), "
-                        f"waiting for resolution poller"
-                    )
-            except Exception as e:
-                self.log.error(f"Error exiting expired position {inst_key[:50]}...: {e}")
-                # Clean up stale entry even on error
-                if inst_key in self._open_positions:
-                    del self._open_positions[inst_key]
-                    save_open_positions(self._open_positions)
-        
-        # Phase 2: Check ALL open positions for stop-loss, take-profit, resolution exits
-        # FIX: iterate self._open_positions (includes dynamic instruments) instead of
-        # self.config.instrument_ids (pre-subscribed only). Dynamic instruments without
-        # quote ticks use _resolve_exit_price as fallback current price.
-        for inst_key in list(self._open_positions.keys()):
-            # ── ERROR ISOLATION: Wrap each position in try/except ──
-            try:
-                try:
-                    inst_id = InstrumentId.from_str(inst_key)
-                except Exception as parse_err:
-                    self.log.error(f"Failed to parse instrument ID '{inst_key[:50]}...': {parse_err}")
-                    continue
-
-                open_positions = self.cache.positions_open(instrument_id=inst_id)
-                if not open_positions or open_positions[0].quantity.as_double() == 0:
-                    continue
-
-                pos = open_positions[0]
-                # avg_px_open can be a Price object OR a raw float depending on Nautilus version
-                raw_entry = pos.avg_px_open
-                entry = raw_entry.as_double() if hasattr(raw_entry, 'as_double') else float(raw_entry)
-                if entry <= 0:
-                    continue
-
-                # Get position info
-                pos_info = self._open_positions.get(inst_key, {})
-                
-                # Get current price from cache (last quote)
-                quote = self.cache.quote_tick(inst_id)
-                if quote is None:
-                    # Dynamic instrument without quote subscription — use simulated price
-                    if pos_info:
-                        mid = self._resolve_exit_price(pos_info)
-                        self.log.info(f"SIMULATED PRICE for {inst_id}:  (no quote ticks)")
-                    else:
-                        continue
-                else:
-                    mid = (quote.bid_price.as_double() + quote.ask_price.as_double()) / 2
-
-                # ── Resolution-aware exit for binary prediction markets ──
-                # Price-based SL/TP on binary outcome markets captures mid-point
-                # opinion, not resolution truth. This caused the $54K P&L divergence:
-                #   - TP exits showed +$34,737 sim but -$2,090 actual
-                #   - SL exits showed +$7,056 sim but -$11,431 actual
-                # Instead, we hold to resolution and only exit on:
-                #   1. Certainty: price > 0.95 (very likely to win) or < 0.05 (very likely to lose)
-                #   2. Whale abandonment of the same market (future enhancement)
-                #   3. ResolutionPoller handles final exit when market resolves
-                # Note: edge-score calibration is preserved for position sizing (kelly.py),
-                #       not for exit triggers.
-                position_edge = pos_info.get("edge_score", 0.0) or 0.0
-
-                # Compute P&L % for pre-resolution stop-loss (same scope as position_edge)
-                entry_price = pos_info.get("entry_price", 0.0)
-                if entry_price > 0:
-                    pnl_pct = ((mid - entry_price) / entry_price) if mid > 0 else 0.0
-                else:
-                    pnl_pct = 0.0
-                market_category = pos_info.get("market_category", "")
-
-                # Certainty exit: if price strongly indicates the outcome
-                if side == "BUY":
-                    is_certain_win = mid > CERTAINTY_WIN_THRESHOLD
-                    is_certain_loss = mid < CERTAINTY_LOSS_THRESHOLD
-                else:
-                    is_certain_win = mid < CERTAINTY_LOSS_THRESHOLD
-                    is_certain_loss = mid > CERTAINTY_WIN_THRESHOLD
-
-                if is_certain_win:
-                    self.log.info(
-                        f"CERTAINTY EXIT (WIN) {inst_id}: mid={mid:.4f}, "
-                        f"entry={entry:.4f}, edge={position_edge:.2f}, "
-                        f"condition_id={pos_info.get('condition_id', '?')[:20]}..."
-                    )
-                    self.exit_position(inst_id, exit_reason="certainty_win")
-                    continue
-                elif is_certain_loss:
-                    self.log.info(
-                        f"CERTAINTY EXIT (LOSS) {inst_id}: mid={mid:.4f}, "
-                        f"entry={entry:.4f}, edge={position_edge:.2f}, "
-                        f"condition_id={pos_info.get('condition_id', '?')[:20]}..."
-                    )
-                    self.exit_position(inst_id, exit_reason="certainty_loss")
-                    continue
-                else:
-                    # ── WHITELIST: Only Spread bets get sports exit signals ──
-                    # Check resolution/sports exit for positions not certainty win/loss
-                    # Only sports markets whitelisted as "Spread:" get the sports event exit signal
-                    mc = pos_info.get("market_category", "")
-                    if mc.lower() == "sports":
-                        title = pos_info.get("market_title", "") or ""
-                        from strategies.wf_constants import SPORTS_WHITELIST_PATTERNS
-                        is_whitelisted = any(
-                            re.search(p, title, re.IGNORECASE)
-                            for p in SPORTS_WHITELIST_PATTERNS
-                        )
-                        
-                        if is_whitelisted:
-                            # Sports event exit (game imminent) - only for whitelisted Spread bets
-                            if self._should_exit_for_sports(inst_id):
-                                self.log.info(f"SPORTS EVENT EXIT {inst_id}: Spread bet, game imminent")
-                                self.exit_position(inst_id, exit_reason="sports_event")
-                                continue
-                        else:
-                            # Non-whitelisted sports: no sports exit signal
-                            self.log.info(
-                                f"SKIP sports exit (non-whitelisted): {title[:50]} | "
-                                f"entry={entry:.4f}, mid={mid:.4f}"
-                            )
-                    
-                    # Resolution exit check — exit if market resolves within 6 hours
-                    # Also applies pre-resolution stop-loss for crypto positions (P&L < -20%)
-                    if self._should_exit_for_resolution(inst_id, pnl_pct=pnl_pct, market_category=market_category):
-                        self.log.info(f"RESOLUTION EXIT {inst_id}: market resolving soon")
-                        self.exit_position(inst_id, exit_reason="resolution")
-                        continue
-                    
-                    # Log holding state for transparency
-                    self.log.info(
-                        f"HOLDING {inst_id}: entry={entry:.4f}, mid={mid:.4f}, "
-                        f"edge={position_edge:.2f} — holding to resolution"
-                    )
-            except Exception as pos_error:
-                # Log error and continue to next position (error isolation)
-                self.log.error(
-                    f"Error checking position {inst_key[:50]}...: {pos_error} | "
-                    f"entry={pos_info.get('entry_price', '?') if 'pos_info' in dir() else '?'} | "
-                    f"continuing to next position"
-                )
-                continue
+        """Delegate position checking to PositionManager."""
+        if self._position_mgr is not None:
+            self._position_mgr.check_all_positions()
 
     def _should_exit_for_resolution(self, instrument_id: InstrumentId, pnl_pct: float = 0.0, market_category: str = "") -> bool:
-        """Check if the market for this instrument resolves within RESOLUTION_EXIT_HOURS hours and apply P&L check."""
-        try:
-            # Extract condition ID from instrument
-            cond_id = str(instrument_id).split("-")[0]
-            # Check Polymarket data-api for resolution time
-            import requests
-            resp = requests.get(
-                f"https://data-api.polymarket.com/markets/{cond_id}",
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                market = resp.json()
-                end_date = market.get("end_date_iso")
-                if end_date:
-                    end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-                    hours_left = (end_dt - datetime.now(timezone.utc)).total_seconds() / 3600
-                    if 0 < hours_left < RESOLUTION_EXIT_HOURS:
-                        # Pre-resolution stop-loss: apply to all categories
-                        # P&L < -20% within 48h of resolution = unlikely to recover
-                        if pnl_pct < -0.20:
-                            self.log.info(f"PRE-RESOLUTION STOP-LOSS: {cond_id[:16]}... pnl={pnl_pct:.1%}, exiting early")
-                            return True
-                        return True
-                    # Exit if market has already ended (hours_left <= 0 = resolved/expired)
-                    if hours_left <= 0:
-                        self.log.info(
-                            f"Market has already ended ({abs(hours_left):.1f}h ago) — "
-                            f"{cond_id[:16]}..., exiting stale position"
-                        )
-                        return True
-                    return False
-        except Exception:
-            pass  # API failure — don't exit on error
+        """Delegate resolution exit check to PositionManager."""
+        if self._position_mgr is not None:
+            return self._position_mgr._should_exit_for_resolution(instrument_id, pnl_pct=pnl_pct, market_category=market_category)
         return False
 
     def _check_daily_loss_limit(self) -> None:
-        """Check if daily loss limit has been breached."""
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        if today != self._daily_pnl_date:
-            # New day, reset
-            self._daily_pnl = 0.0
-            self._daily_pnl_date = today
-            self._daily_loss_breached = False  # Reset breach flag for new day
-            return
-
-        if self._daily_loss_breached:
-            return  # Already breached — no need to re-log every 30s
-
-        if self._daily_pnl <= -self._daily_loss_limit:
-            self.log.error(
-                f"DAILY LOSS LIMIT BREACHED: ${self._daily_pnl:,.2f} / -${self._daily_loss_limit:,.2f}. "
-                f"Closing all positions and stopping auto-trade."
-            )
-            self._daily_loss_breached = True
-            save_daily_state(
-                daily_pnl=self._daily_pnl,
-                daily_pnl_date=self._daily_pnl_date,
-                daily_loss_breached=self._daily_loss_breached,
-            )
-            self.exit_all_positions()
+        """Delegate daily loss check to PositionManager."""
+        if self._position_mgr is not None:
+            self._position_mgr.check_daily_loss()
 
     def add_resolution_pnl(self, pnl: float) -> None:
-        """Called by ResolutionPoller when a market resolves with real P&L.
-
-        Feeds actual (resolution-based) P&L into the daily kill switch tracker.
-        """
-        if pnl == 0:
-            return
-        self._daily_pnl += pnl
-        save_daily_state(
-            daily_pnl=self._daily_pnl,
-            daily_pnl_date=self._daily_pnl_date,
-            daily_loss_breached=self._daily_loss_breached,
-        )
-        self._check_daily_loss_limit()
+        """Delegate resolution P&L tracking to PositionManager."""
+        if self._position_mgr is not None:
+            self._position_mgr.add_resolution_pnl(pnl)
 
     def _update_gap_state(self, signal) -> None:
-        """Update signal_trade_gap_state.json on every valid signal.
-
-        Increments signal/trade counters, updates timestamps, resets gap counters.
-        Atomic write via temp file + rename.
-        """
-        state_file = Path(__file__).parent.parent / ".signal_trade_gap_state.json"
-        try:
-            if state_file.exists():
-                with open(state_file) as f:
-                    state = json.load(f)
-            else:
-                state = {
-                    "prev_open_count": 0, "stall_start": None,
-                    "consecutive_gaps": 0, "recent_signals": 0,
-                    "latest_signal": None, "recent_trades": 0,
-                    "latest_trade": None, "open_trade_count": 0,
-                }
-        except (FileNotFoundError, json.JSONDecodeError):
-            state = {
-                "prev_open_count": 0, "stall_start": None,
-                "consecutive_gaps": 0, "recent_signals": 0,
-                "latest_signal": None, "recent_trades": 0,
-                "latest_trade": None, "open_trade_count": 0,
-            }
-
-        now_iso = datetime.now(timezone.utc).isoformat()
-        state["recent_signals"] = state.get("recent_signals", 0) + 1
-        state["latest_signal"] = now_iso
-        state["recent_trades"] = state.get("recent_trades", 0) + 1
-        state["latest_trade"] = now_iso
-        state["consecutive_gaps"] = 0
-
-        tmp = state_file.with_suffix(".tmp")
-        with open(tmp, "w") as f:
-            json.dump(state, f, indent=2)
-        tmp.rename(state_file)
+        """Delegate gap state update to gap_state module."""
+        from strategies.state_manager import update_gap_state
+        update_gap_state(signal)
 
     def _on_exit_timer(self, timer_name: str = None) -> None:
         """Timer callback — fires every 30s independently of quote ticks.
@@ -2602,271 +1090,32 @@ class WhaleFollower(Strategy):
                 self.log.info(f"Cleaned up {len(stale_keys)} stale dynamic subscriptions")
 
     def _check_autoresearch_signals(self) -> None:
-        """Poll autoresearch signal queue for model-generated trade recommendations."""
-        queue_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "autoresearch_signal_queue.json")
-        if not os.path.exists(queue_path):
-            return
-        try:
-            with open(queue_path) as f:
-                signals = json.load(f)
-            if not signals or not isinstance(signals, list):
-                return
-            # Clear the queue immediately to prevent re-processing on crash
-            with open(queue_path, "w") as f:
-                json.dump([], f)
-            processed = 0
-            for s in signals:
-                signal_obj = WhaleSignal(
-                    signal_type=WhaleSignalType.LARGE_POSITION,
-                    condition_id=s.get("condition_id", ""),
-                    token_id=s.get("token_id", ""),
-                    outcome=s.get("outcome", "Yes"),
-                    side=s.get("side", "buy"),
-                    confidence=s.get("confidence", 0.5),
-                    target_price=s.get("entry_price", 0.5),
-                    suggested_size_usd=s.get("suggested_size_usd", 0.0),
-                    whale_name=s.get("whale_name", "autoresearch_llm"),
-                    whale_roi=s.get("whale_roi", 0.0),
-                    timestamp=s.get("timestamp", time.time()),
-                    reason=s.get("reason", "Autoresearch LLM signal"),
-                    market_title=s.get("market_title", ""),
-                    market_category=s.get("market_category", ""),
-                    whale_address=s.get("whale_address", ""),
-                    edge_score=s.get("edge_score", 0.0),
-                )
-                self._on_signal(signal_obj)
-                processed += 1
-            if processed:
-                self.log.info(f"Autoresearch signals: {processed} queued recommendations processed")
-        except Exception as e:
-            self.log.error(f"Autoresearch signal check failed: {e}")
+        """Delegate autoresearch signal checking to SignalBridge."""
+        if self._signal_bridge is not None:
+            self._signal_bridge.check_autoresearch_signals()
 
     def _check_sybil_signals(self) -> None:
-        """Poll sybil signal queue — conservative integration.
-        
-        Filters: confidence 0.65-0.72 (Tony's comfort zone), max $100 position.
-        Clears queue after processing to prevent re-execution on crash.
-        """
-        queue_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "sybil_signal_queue.json")
-        if not os.path.exists(queue_path):
-            return
-        try:
-            with open(queue_path) as f:
-                data = json.load(f)
-            signals = data.get("signals", []) if isinstance(data, dict) else []
-            if not signals:
-                return
-            # Clear queue immediately to prevent re-processing on crash
-            with open(queue_path, "w") as f:
-                json.dump({"generated_at": "", "signal_count": 0, "signals": []}, f)
-
-            processed = 0
-            for s in signals:
-                confidence = s.get("confidence", 0.5)
-                # ── Confidence filter: only 65-72% zone ──
-                if confidence < 0.65 or confidence > 0.72:
-                    self.log.info(f"Sybil signal skipped — confidence {confidence:.2f} outside 0.65-0.72 zone | {s.get('market_title','')}")
-                    continue
-
-                # Map side
-                sybil_side = s.get("side", "BUY YES")
-                if "BUY YES" in sybil_side.upper():
-                    side, outcome = "buy", "Yes"
-                elif "BUY NO" in sybil_side.upper():
-                    side, outcome = "buy", "No"
-                else:
-                    side, outcome = "buy", "Yes"
-
-                # ── Position sizing: max $100 ──
-                suggested_size = min(100.0, s.get("total_exposure_usd", 0) * 0.01)
-
-                group_id = s.get("group_id", "unknown")
-                signal_obj = WhaleSignal(
-                    signal_type=WhaleSignalType.LARGE_POSITION,
-                    condition_id=s.get("condition_id", ""),
-                    token_id="",
-                    outcome=outcome,
-                    side=side,
-                    confidence=confidence,
-                    target_price=0.5,
-                    suggested_size_usd=suggested_size,
-                    whale_name=f"sybil_meta_{group_id}",
-                    whale_roi=0.0,
-                    timestamp=time.time(),
-                    reason=s.get("reason", f"Sybil {group_id} signal"),
-                    market_title=s.get("market_title", ""),
-                    market_category="",
-                    whale_address="",
-                    edge_score=confidence * 10,
-                )
-                self._on_signal(signal_obj)
-                processed += 1
-            if processed:
-                self.log.info(f"Sybil signals: {processed} queued signals processed (65-72% filter)")
-        except Exception as e:
-            self.log.error(f"Sybil signal check failed: {e}")
+        """Delegate sybil signal checking to SignalBridge."""
+        if self._signal_bridge is not None:
+            self._signal_bridge.check_sybil_signals()
 
     def _validate_sybil_signal_price(self, signal: dict) -> tuple[bool, str]:
-        """Check current market midpoint hasn't moved against the signal direction.
-        
-        Args:
-            signal: A sybil signal dict from the queue.
-        
-        Returns:
-            (True, reason) if price is favorable for entry,
-            (False, reason) if price has moved too far.
-        """
-        condition_id = signal.get("condition_id", "")
-        if not condition_id:
-            return True, "no_condition_id"
-        
-        now = time.time()
-        cached = self._sybil_price_cache.get(condition_id)
-        if cached and (now - cached[1]) < 30:
-            midpoint = cached[0]
-        else:
-            try:
-                import urllib.request
-                url = f"https://clob.polymarket.com/midpoint?condition_id={condition_id}"
-                req = urllib.request.Request(url, headers={"User-Agent": "nautilus-sybil/1.0"})
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    data = json.loads(resp.read().decode())
-                midpoint_str = data.get("midpoint") or data.get("price")
-                if midpoint_str is None:
-                    return True, "no_midpoint"
-                midpoint = float(midpoint_str)
-                self._sybil_price_cache[condition_id] = (midpoint, now)
-            except Exception as e:
-                self.log.debug(f"Sybil price check failed for {condition_id[:20]}: {e}")
-                return True, "api_failed"  # Fail-open on API error
-        
-        sybil_side = signal.get("side", "BUY YES")
-        if "BUY YES" in sybil_side.upper():
-            max_entry = 0.5 + SYBIL_MAX_PRICE_SLIPPAGE
-            if midpoint > 0.90:
-                return False, f"YES price {midpoint:.3f} near certainty"
-            if midpoint > max_entry:
-                return False, f"YES price {midpoint:.3f} > max entry {max_entry:.3f}"
-            return True, f"YES at {midpoint:.3f}"
-        else:
-            no_price = 1.0 - midpoint
-            max_entry = 0.5 + SYBIL_MAX_PRICE_SLIPPAGE
-            if no_price > max_entry:
-                return False, f"NO price {no_price:.3f} > max entry {max_entry:.3f}"
-            return True, f"NO at {no_price:.3f} (YES={midpoint:.3f})"
-
-    # ── Sports Market Detection (Track A) ─────────────────────────────────────
-
-    _SPORTS_KEYWORDS = [
-        "nfl", "nba", "mlb", "nhl", "ncaa", "college football", "college basketball",
-        "soccer", "football", "basketball", "baseball", "hockey", "tennis", "golf",
-        "boxing", "mma", "ufc", "wwe", "f1", "formula 1", "nascar",
-        "super bowl", "world cup", "champions league", "premier league",
-        "playoffs", "stanley cup", "world series", "final four", "march madness",
-        "vs.", " vs ", "eagles", "49ers", "chiefs", "lakers", "celtics",
-        "warriors", "yankees", "dodgers", "red sox", "patriots",
-        "trail blazers", "spurs", "penguins", "stars", "wild",
-        "bucks", "thunder", "nuggets", "timberwolves", "knicks",
-    ]
+        """Delegate sybil price validation to SignalBridge."""
+        if self._signal_bridge is not None:
+            return self._signal_bridge.validate_sybil_signal_price(signal)
+        return True, "no_bridge"
 
     def _is_sports_market(self, instrument_id) -> tuple[bool, str]:
-        """Check if an instrument is a sports market. Returns (is_sports, sport_type)."""
-        title = str(instrument_id).lower()
-        sport_types = {
-            "nba": ["nba", "lakers", "celtics", "warriors", "bucks", "thunder", "nuggets", "knicks", "trail blazers", "spurs", "timberwolves"],
-            "nfl": ["nfl", "eagles", "49ers", "chiefs", "patriots", "cowboys", "commanders"],
-            "nhl": ["nhl", "penguins", "stars", "wild", "hurricanes", "golden knights", "avalanche", "oilers", "canucks"],
-            "mlb": ["mlb", "yankees", "dodgers", "red sox"],
-            "soccer": ["soccer", "champions league", "premier league", "world cup"],
-            "ncaa": ["ncaa", "college football", "college basketball", "march madness", "final four"],
-        }
-        
-        for sport_type, keywords in sport_types.items():
-            for kw in keywords:
-                if kw in title:
-                    return True, sport_type
-        
-        # General sports check
-        for kw in self._SPORTS_KEYWORDS:
-            if kw in title:
-                return True, "other_sports"
-        
-        return False, ""
+        """Delegate to wf_sports module."""
+        return is_sports_market(str(instrument_id))
 
     def _get_market_event_time(self, instrument_id) -> dict:
-        """Fetch event timing for a market from Polymarket API."""
-        cond_id = str(instrument_id).split("-")[0]
-        try:
-            # Use cached metadata if available
-            metadata_file = Path.home() / "workspace" / "metadata" / "markets_latest.json"
-            if metadata_file.exists():
-                import json
-                with open(metadata_file) as f:
-                    markets = json.load(f)
-                for m in markets:
-                    if m.get("condition_id") == cond_id:
-                        return {
-                            "hours_until_event": m.get("hours_until_event"),
-                            "is_imminent": m.get("is_imminent", False),
-                            "is_in_play": m.get("is_in_play", False),
-                            "is_past": m.get("is_past", False),
-                            "event_date_iso": m.get("end_date_iso"),
-                            "liquidity_tier": m.get("liquidity_tier", "tier3"),
-                            "volume": m.get("volume", 0),
-                            "liquidity": m.get("liquidity", 0),
-                        }
-        except Exception:
-            pass
-        
-        # Fallback: fetch from API
-        try:
-            resp = requests.get(
-                f"https://gamma-api.polymarket.com/markets/{cond_id}",
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                m = resp.json()
-                end_date = m.get("endDateIso", m.get("endDate"))
-                if end_date:
-                    end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-                    hours_left = (end_dt - datetime.now(timezone.utc)).total_seconds() / 3600
-                    return {
-                        "hours_until_event": round(hours_left, 1),
-                        "is_imminent": 0 < hours_left < 6,
-                        "is_in_play": hours_left < 6 and hours_left > 0,
-                        "is_past": hours_left < 0,
-                        "event_date_iso": end_date,
-                        "liquidity_tier": "tier3",
-                        "volume": float(m.get("volumeNum", 0)),
-                        "liquidity": float(m.get("liquidityNum", 0)),
-                    }
-        except Exception:
-            pass
-        
-        return {
-            "hours_until_event": None,
-            "is_imminent": False,
-            "is_in_play": False,
-            "is_past": False,
-            "event_date_iso": None,
-            "liquidity_tier": "tier3",
-            "volume": 0,
-            "liquidity": 0,
-        }
+        """Delegate to wf_sports module."""
+        return get_market_event_time(str(instrument_id))
 
     def _should_exit_for_sports(self, instrument_id) -> bool:
-        is_sports, sport_type = self._is_sports_market(instrument_id)
-        if not is_sports:
-            return False
-
-        timing = self._get_market_event_time(instrument_id)
-
-        # Exit if market is in-play (prices frozen, cannot manage risk)
-        if timing["is_in_play"]:
-            self.log.info(f"Sports exit: {sport_type} market is in-play (prices frozen)")
-            return True
-
-        return False
+        """Delegate to wf_sports module."""
+        return should_exit_for_sports(str(instrument_id), log_func=self.log.info)
 
     def _adjust_size_for_liquidity(self, size_usd: float, instrument_id) -> float:
         from strategies.wf_kelly import adjust_size_for_liquidity
@@ -2902,16 +1151,4 @@ class WhaleFollower(Strategy):
             whale_tiering=self._whale_tiering,
         )
 
-    # ── DEPRECATED: Use _check_all_positions() instead ──
-    # _check_all_positions() handles stop-loss/take-profit for ALL positions
-    # (including dynamic instruments), is side-aware (LONG/SHORT), and uses
-    # proper exit_reason strings. These legacy methods only check the first
-    # pre-subscribed instrument (self.config.instrument_id → instrument_ids[0]).
-    # They are kept as no-op stubs for backward compat and removed in next major.
-    def _check_stop_loss(self, current_price: float) -> None:
-        """DEPRECATED: Use _check_all_positions()."""
-        pass
 
-    def _check_take_profit(self, current_price: float) -> None:
-        """DEPRECATED: Use _check_all_positions()."""
-        pass

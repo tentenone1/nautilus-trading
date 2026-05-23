@@ -437,12 +437,13 @@ Respond in JSON format with this structure:
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
-def main() -> None:
+def main(args=None) -> None:
     parser = argparse.ArgumentParser(description="Sybil Intelligence Tracker")
     parser.add_argument("--full-history", action="store_true", help="Fetch more trades per wallet (500 vs 100)")
     parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT), help="Output file path")
     parser.add_argument("--skip-llm", action="store_true", help="Skip LLM strategy generation")
-    args = parser.parse_args()
+    if args is None:
+        args = parser.parse_args()
 
     trades_limit = 500 if args.full_history else TRADES_LIMIT
     logger.info("Starting sybil intelligence scan (limit=%d per wallet)", trades_limit)

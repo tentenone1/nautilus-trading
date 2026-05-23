@@ -52,38 +52,8 @@ WHALE_BLACKLIST = frozenset({
     "mooseborzoi",      # entity cluster — should_fade=True (degenerate_human)
     "pilotlady",        # entity cluster — should_fade=True (degenerate_human)
     "trade-via-Gravia", # entity cluster — should_fade=True (market_maker)
-    "AppleTime67",      # entity cluster — skilled_human
-    "Dvitaminbets",     # entity cluster — skilled_human
-    "Herdonia",         # entity cluster — skilled_human
-    "NewTeamSosed4",    # entity cluster — skilled_human
-    "Pajamapants",      # entity cluster — skilled_human
     "SMCAOMCRL",        # entity cluster — skilled_human
-    "Talvez10",         # entity cluster — skilled_human
-    "Wannac",           # entity cluster — skilled_human
-    "beetlepimp",       # entity cluster — skilled_human
-    "benwyatt",         # entity cluster — skilled_human
-    "bossoskil1",       # entity cluster — skilled_human
-    "loitterer",        # entity cluster — skilled_human
     "meifei123",        # entity cluster — skilled_human
-    "mooseborzoi",      # entity cluster — skilled_human
-    "pilotlady",        # entity cluster — skilled_human
-    "trade-via-Gravia", # entity cluster — skilled_human
-    "AppleTime67",        # entity cluster — skilled_human
-    "Dvitaminbets",        # entity cluster — skilled_human
-    "Herdonia",        # entity cluster — skilled_human
-    "NewTeamSosed4",        # entity cluster — skilled_human
-    "Pajamapants",        # entity cluster — skilled_human
-    "SMCAOMCRL",        # entity cluster — skilled_human
-    "Talvez10",        # entity cluster — skilled_human
-    "Wannac",        # entity cluster — skilled_human
-    "beetlepimp",        # entity cluster — skilled_human
-    "benwyatt",        # entity cluster — skilled_human
-    "bossoskil1",        # entity cluster — skilled_human
-    "loitterer",        # entity cluster — skilled_human
-    "meifei123",        # entity cluster — skilled_human
-    "mooseborzoi",        # entity cluster — skilled_human
-    "pilotlady",        # entity cluster — skilled_human
-    "trade-via-Gravia",        # entity cluster — skilled_human
     "autoresearch_llm",  # entity cluster — degenerate_human
     "Hehaj648jeh",       # entity cluster — mixed_entity
     "phonesculptor",    # entity cluster — mixed_entity
@@ -352,3 +322,19 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
     @property
     def instrument_id(self) -> InstrumentId | None:
         return self.instrument_ids[0] if self.instrument_ids else None
+
+
+def categorize_instrument(inst_id: str) -> str:
+    """Fallback categorizer from instrument ID when signal lacks market_title."""
+    if not inst_id:
+        return "general"
+    parts = inst_id.split("-")
+    if len(parts) > 1:
+        raw = parts[1].replace(".POLYMARKET", "").replace("_", " ").replace("-", " ")
+        # Skip numeric-only strings (condition IDs) -- not categorizable
+        if raw and raw[0].isdigit() and raw.replace(".", "").replace("_", "").isalnum():
+            return "general"
+        from strategies.whale_tracker_new import _categorize_market
+        result = _categorize_market(raw)
+        return result if result != "general" or raw else "general"
+    return "general"
