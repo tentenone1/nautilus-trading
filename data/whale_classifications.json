@@ -1,0 +1,1841 @@
+{
+  "updated_at": "2026-05-25T04:54:02.310008+00:00",
+  "whale_count": 89,
+  "classifications": {
+    "00xx00xx00": {
+      "whale_name": "00xx00xx00",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4545,
+      "total_trades": 11,
+      "total_pnl": -10.74,
+      "avg_pnl": -0.98,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.455,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.55
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "0x14026373da58fabe45e2bf73a915a5d4b3a6e35b": {
+      "whale_name": "0x14026373da58fabe45e2bf73a915a5d4b3a6e35b",
+      "classification": "skilled_human",
+      "confidence": 1.0,
+      "win_rate": 0.5,
+      "total_trades": 208,
+      "total_pnl": 0.83,
+      "avg_pnl": 0.0,
+      "categories": [
+        "crypto"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.5,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 1.0
+      },
+      "action": "copy",
+      "action_confidence": 1.0
+    },
+    "0x2a2C53bD278c04DA9962Fcf96490E17F3DfB9B": {
+      "whale_name": "0x2a2C53bD278c04DA9962Fcf96490E17F3DfB9B",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.2,
+      "total_trades": 5,
+      "total_pnl": -337.63,
+      "avg_pnl": -67.53,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.2,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.25
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "0x3DFb153c197D4C19D3B31c1ecD2c7B6860eeabAf-1722957908185": {
+      "whale_name": "0x3DFb153c197D4C19D3B31c1ecD2c7B6860eeabAf-1722957908185",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": -8.17,
+      "avg_pnl": -2.72,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "0x5234c8687FbC415e8c255b3a90AFa8CF47de4c4F-1777743586273": {
+      "whale_name": "0x5234c8687FbC415e8c255b3a90AFa8CF47de4c4F-1777743586273",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 15,
+      "total_pnl": 15.919999999999998,
+      "avg_pnl": 1.06,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.75
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "0x89cd944aa9cf528142e3557099c6992eb7ce4d7d": {
+      "whale_name": "0x89cd944aa9cf528142e3557099c6992eb7ce4d7d",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": -25.97,
+      "avg_pnl": -8.66,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "0xdb250854cb0A4C1784fE2D1179f5c3C4577fEb12-1778517347042": {
+      "whale_name": "0xdb250854cb0A4C1784fE2D1179f5c3C4577fEb12-1778517347042",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4365,
+      "total_trades": 197,
+      "total_pnl": 60.42,
+      "avg_pnl": 0.31,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.436,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 1.0
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "Arbguy": {
+      "whale_name": "Arbguy",
+      "classification": "skilled_human",
+      "confidence": 1.0,
+      "win_rate": 1.0,
+      "total_trades": 6,
+      "total_pnl": 58.7,
+      "avg_pnl": 9.78,
+      "categories": [
+        "economics",
+        "sports",
+        "politics"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 1.0,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.3
+      },
+      "action": "copy",
+      "action_confidence": 1.0
+    },
+    "Bagwell306": {
+      "whale_name": "Bagwell306",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.5556,
+      "total_trades": 9,
+      "total_pnl": 10.32,
+      "avg_pnl": 1.15,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.556,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.45
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "COMEONDUDE": {
+      "whale_name": "COMEONDUDE",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 10,
+      "total_pnl": -43.269999999999996,
+      "avg_pnl": -4.33,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.5
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "Cdrael2L": {
+      "whale_name": "Cdrael2L",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 4,
+      "total_pnl": -8.01,
+      "avg_pnl": -2.0,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.2
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "Countryside": {
+      "whale_name": "Countryside",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 4,
+      "total_pnl": -280.98,
+      "avg_pnl": -70.25,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.25,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.375,
+        "consistency": 0.4
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "Erasmus.": {
+      "whale_name": "Erasmus.",
+      "classification": "degenerate_human",
+      "confidence": 0.923,
+      "win_rate": 0.0,
+      "total_trades": 4,
+      "total_pnl": -9.3,
+      "avg_pnl": -2.33,
+      "categories": [
+        "geopolitics",
+        "general",
+        "technology"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.2
+      },
+      "action": "fade",
+      "action_confidence": 0.4
+    },
+    "Feromont": {
+      "whale_name": "Feromont",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.1111,
+      "total_trades": 9,
+      "total_pnl": -5.0,
+      "avg_pnl": -0.56,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.111,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.45
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "FullPicks1": {
+      "whale_name": "FullPicks1",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.75,
+      "total_trades": 4,
+      "total_pnl": 17.66,
+      "avg_pnl": 4.42,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.75,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.2
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "Hehaj648jeh": {
+      "whale_name": "Hehaj648jeh",
+      "classification": "trading_bot",
+      "confidence": 0.5,
+      "win_rate": 0.5,
+      "total_trades": 260,
+      "total_pnl": -2.83,
+      "avg_pnl": -0.01,
+      "categories": [
+        "crypto"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.5,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 1.0
+      },
+      "action": "fade",
+      "action_confidence": 0.3
+    },
+    "How.Dare.You": {
+      "whale_name": "How.Dare.You",
+      "classification": "degenerate_human",
+      "confidence": 1.0,
+      "win_rate": 0.0,
+      "total_trades": 4,
+      "total_pnl": -291.11,
+      "avg_pnl": -72.78,
+      "categories": [
+        "economics"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.2
+      },
+      "action": "fade",
+      "action_confidence": 0.4
+    },
+    "JewishNinja": {
+      "whale_name": "JewishNinja",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.087,
+      "total_trades": 23,
+      "total_pnl": 4741.17,
+      "avg_pnl": 206.14,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.206,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.353,
+        "consistency": 1.0
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "Logan.": {
+      "whale_name": "Logan.",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": -4.42,
+      "avg_pnl": -1.47,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.75,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.6
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "SDWWWS": {
+      "whale_name": "SDWWWS",
+      "classification": "degenerate_human",
+      "confidence": 0.925,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": -10.01,
+      "avg_pnl": -3.34,
+      "categories": [
+        "crypto"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "fade",
+      "action_confidence": 0.4
+    },
+    "SemyonMarmeladov": {
+      "whale_name": "SemyonMarmeladov",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": -8.34,
+      "avg_pnl": -2.78,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15,
+        "poly_data_classification": "skilled_human",
+        "poly_data_confidence": 0.5,
+        "poly_data_trades": 41,
+        "poly_data_volume": 31978.5
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "Soarin22": {
+      "whale_name": "Soarin22",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 1.0,
+      "total_trades": 3,
+      "total_pnl": 354.22,
+      "avg_pnl": 118.07,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 1.0,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "Supah9ga": {
+      "whale_name": "Supah9ga",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": 3.5200000000000005,
+      "avg_pnl": 1.17,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "VladimirPooper": {
+      "whale_name": "VladimirPooper",
+      "classification": "skilled_human",
+      "confidence": 0.95,
+      "win_rate": 0.75,
+      "total_trades": 4,
+      "total_pnl": 596.1,
+      "avg_pnl": 149.03,
+      "categories": [
+        "sports",
+        "crypto"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.75,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.5,
+        "consistency": 0.2
+      },
+      "action": "copy",
+      "action_confidence": 1.0
+    },
+    "Zywoo123": {
+      "whale_name": "Zywoo123",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.2857,
+      "total_trades": 7,
+      "total_pnl": -11.99,
+      "avg_pnl": -1.71,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.286,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.35
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "anoin123": {
+      "whale_name": "anoin123",
+      "classification": "degenerate_human",
+      "confidence": 0.65,
+      "win_rate": 0.3,
+      "total_trades": 10,
+      "total_pnl": 2035.36,
+      "avg_pnl": 203.54,
+      "categories": [
+        "geopolitics",
+        "general"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.3,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.5
+      },
+      "action": "fade",
+      "action_confidence": 0.4
+    },
+    "arlanta": {
+      "whale_name": "arlanta",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.2857,
+      "total_trades": 7,
+      "total_pnl": 40.72,
+      "avg_pnl": 5.82,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.4,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.25
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "askilika": {
+      "whale_name": "askilika",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.2857,
+      "total_trades": 7,
+      "total_pnl": 83.96,
+      "avg_pnl": 11.99,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.286,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.35
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "bcda": {
+      "whale_name": "bcda",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 1.0,
+      "total_trades": 6,
+      "total_pnl": 95.44,
+      "avg_pnl": 15.91,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 1.0,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.3
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "cruzNBA": {
+      "whale_name": "cruzNBA",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.25,
+      "total_trades": 4,
+      "total_pnl": -4.389999999999999,
+      "avg_pnl": -1.1,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.25,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.2
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "downtownfee": {
+      "whale_name": "downtownfee",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": 606.14,
+      "avg_pnl": 202.05,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.667,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.333,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "fuc.your.mother": {
+      "whale_name": "fuc.your.mother",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 4,
+      "total_pnl": -18.509999999999998,
+      "avg_pnl": -4.63,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "jtwyslljy": {
+      "whale_name": "jtwyslljy",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.6,
+      "total_trades": 5,
+      "total_pnl": 30.29,
+      "avg_pnl": 6.06,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.6,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.25
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "lebronstan23": {
+      "whale_name": "lebronstan23",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": -6.220000000000001,
+      "avg_pnl": -2.07,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p100-0x20d643": {
+      "whale_name": "p100-0x20d643",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": -7.280000000000001,
+      "avg_pnl": -2.43,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p102-0xf68a28": {
+      "whale_name": "p102-0xf68a28",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.1579,
+      "total_trades": 19,
+      "total_pnl": 139.66,
+      "avg_pnl": 7.35,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.25,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.417,
+        "consistency": 0.6
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p108-0x9eca63": {
+      "whale_name": "p108-0x9eca63",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.25,
+      "total_trades": 4,
+      "total_pnl": -8.66,
+      "avg_pnl": -2.17,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.25,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.2
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p111-0xe7a205": {
+      "whale_name": "p111-0xe7a205",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": 3.7399999999999998,
+      "avg_pnl": 1.25,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p112-0xafd492": {
+      "whale_name": "p112-0xafd492",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.375,
+      "total_trades": 8,
+      "total_pnl": -5.7,
+      "avg_pnl": -0.71,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.375,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.4
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p116-0xfea31b": {
+      "whale_name": "p116-0xfea31b",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 9,
+      "total_pnl": -0.7900000000000003,
+      "avg_pnl": -0.09,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.6,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.25
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p12-0x5bec79": {
+      "whale_name": "p12-0x5bec79",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.2143,
+      "total_trades": 14,
+      "total_pnl": -30.78,
+      "avg_pnl": -2.2,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.214,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.7
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p125-0xa1b3fa": {
+      "whale_name": "p125-0xa1b3fa",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 6,
+      "total_pnl": 16.75,
+      "avg_pnl": 2.79,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.3
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p126-0x3c3ff2": {
+      "whale_name": "p126-0x3c3ff2",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4615,
+      "total_trades": 13,
+      "total_pnl": -0.13999999999999901,
+      "avg_pnl": -0.01,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.462,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.65
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p127-0x9770ca": {
+      "whale_name": "p127-0x9770ca",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": -37.44,
+      "avg_pnl": -12.48,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.333,
+        "consistency": 0.15
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p136-0x230287": {
+      "whale_name": "p136-0x230287",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.75,
+      "total_trades": 4,
+      "total_pnl": 362.61,
+      "avg_pnl": 90.65,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 1.0,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p137-0x681504": {
+      "whale_name": "p137-0x681504",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4167,
+      "total_trades": 12,
+      "total_pnl": -490.7,
+      "avg_pnl": -40.89,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.455,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.55
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p150-0xba389f": {
+      "whale_name": "p150-0xba389f",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.48,
+      "total_trades": 25,
+      "total_pnl": 0.5100000000000005,
+      "avg_pnl": 0.02,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.48,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 1.0
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p167-0x033f03": {
+      "whale_name": "p167-0x033f03",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3636,
+      "total_trades": 11,
+      "total_pnl": -16.07999999999999,
+      "avg_pnl": -1.46,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.429,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.7
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p183-0x437961": {
+      "whale_name": "p183-0x437961",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4167,
+      "total_trades": 12,
+      "total_pnl": -417.14,
+      "avg_pnl": -34.76,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.417,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.333,
+        "consistency": 0.6
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p184-0x0e64bd": {
+      "whale_name": "p184-0x0e64bd",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.6364,
+      "total_trades": 11,
+      "total_pnl": 9.0,
+      "avg_pnl": 0.82,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.636,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.55
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p187-0x1b47e9": {
+      "whale_name": "p187-0x1b47e9",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.2857,
+      "total_trades": 7,
+      "total_pnl": -12.22,
+      "avg_pnl": -1.75,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.286,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.35
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p2-0x492442": {
+      "whale_name": "p2-0x492442",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 1.0,
+      "total_trades": 5,
+      "total_pnl": 444.78,
+      "avg_pnl": 88.96,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.833,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.167,
+        "consistency": 0.3
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p204-0x8740bd": {
+      "whale_name": "p204-0x8740bd",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 5,
+      "total_pnl": -30.849999999999998,
+      "avg_pnl": -6.17,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p206-0x537576": {
+      "whale_name": "p206-0x537576",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": -13.92,
+      "avg_pnl": -4.64,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p232-0xd10695": {
+      "whale_name": "p232-0xd10695",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 12,
+      "total_pnl": -1562.02,
+      "avg_pnl": -130.17,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.6
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p233-0x5d1d9c": {
+      "whale_name": "p233-0x5d1d9c",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.6471,
+      "total_trades": 17,
+      "total_pnl": 124.58,
+      "avg_pnl": 7.33,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.647,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.85
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p246-0xcbba64": {
+      "whale_name": "p246-0xcbba64",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 9,
+      "total_pnl": -29.5,
+      "avg_pnl": -3.28,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.3
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p26-0x1117ea": {
+      "whale_name": "p26-0x1117ea",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4444,
+      "total_trades": 9,
+      "total_pnl": 217.46,
+      "avg_pnl": 24.16,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.444,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.45
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p264-0x32ccd9": {
+      "whale_name": "p264-0x32ccd9",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.25,
+      "total_trades": 4,
+      "total_pnl": 141.35000000000002,
+      "avg_pnl": 35.34,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.25,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.25,
+        "consistency": 0.2
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p30-0x83d228": {
+      "whale_name": "p30-0x83d228",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 5,
+      "total_pnl": -62.44,
+      "avg_pnl": -12.49,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.25
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p32-0xe72bb5": {
+      "whale_name": "p32-0xe72bb5",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": -14.739999999999998,
+      "avg_pnl": -4.91,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.9
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p37-0xe5efd6": {
+      "whale_name": "p37-0xe5efd6",
+      "classification": "degenerate_human",
+      "confidence": 0.65,
+      "win_rate": 0.3,
+      "total_trades": 10,
+      "total_pnl": -1744.92,
+      "avg_pnl": -174.49,
+      "categories": [
+        "crypto",
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.3,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.2,
+        "consistency": 0.5
+      },
+      "action": "fade",
+      "action_confidence": 0.4
+    },
+    "p4-0x93abbc": {
+      "whale_name": "p4-0x93abbc",
+      "classification": "degenerate_human",
+      "confidence": 1.0,
+      "win_rate": 0.0,
+      "total_trades": 4,
+      "total_pnl": -71.18,
+      "avg_pnl": -17.8,
+      "categories": [
+        "crypto",
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.2
+      },
+      "action": "fade",
+      "action_confidence": 0.4
+    },
+    "p51-0x31864f": {
+      "whale_name": "p51-0x31864f",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4571,
+      "total_trades": 35,
+      "total_pnl": 8.520000000000001,
+      "avg_pnl": 0.24,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.457,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 1.0
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p62-0x86fbea": {
+      "whale_name": "p62-0x86fbea",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4,
+      "total_trades": 10,
+      "total_pnl": -285.16,
+      "avg_pnl": -28.52,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.4,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.3,
+        "consistency": 0.5
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p72-0x39d3c7": {
+      "whale_name": "p72-0x39d3c7",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.4737,
+      "total_trades": 19,
+      "total_pnl": -66.71,
+      "avg_pnl": -3.51,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.5,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.9
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p73-0x23073a": {
+      "whale_name": "p73-0x23073a",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 8,
+      "total_pnl": -39.56,
+      "avg_pnl": -4.95,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.4
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p75-0xacb206": {
+      "whale_name": "p75-0xacb206",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.5556,
+      "total_trades": 9,
+      "total_pnl": -15.399999999999999,
+      "avg_pnl": -1.71,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.556,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.45
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p81-0xdb2223": {
+      "whale_name": "p81-0xdb2223",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.5,
+      "total_trades": 10,
+      "total_pnl": 144.96,
+      "avg_pnl": 14.5,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.5,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.5
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p82-0x19e27e": {
+      "whale_name": "p82-0x19e27e",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.1429,
+      "total_trades": 7,
+      "total_pnl": -3.1100000000000003,
+      "avg_pnl": -0.44,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.143,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.35
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "p83-0x2a91d1": {
+      "whale_name": "p83-0x2a91d1",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.75,
+      "total_trades": 4,
+      "total_pnl": 132.86,
+      "avg_pnl": 33.22,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.75,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.2
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "p85-0x30c7ac": {
+      "whale_name": "p85-0x30c7ac",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.6111,
+      "total_trades": 18,
+      "total_pnl": 21.75,
+      "avg_pnl": 1.21,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.611,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.9
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "p9-0xa71093": {
+      "whale_name": "p9-0xa71093",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.2692,
+      "total_trades": 26,
+      "total_pnl": 55.730000000000004,
+      "avg_pnl": 2.14,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.269,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 1.0
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "phonesculptor": {
+      "whale_name": "phonesculptor",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.5385,
+      "total_trades": 13,
+      "total_pnl": -9.13,
+      "avg_pnl": -0.7,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.538,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.65
+      },
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "ramadamaramadam": {
+      "whale_name": "ramadamaramadam",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": -7.43,
+      "avg_pnl": -2.48,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "sjqdhqsjgd65": {
+      "whale_name": "sjqdhqsjgd65",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.6667,
+      "total_trades": 3,
+      "total_pnl": -0.34999999999999987,
+      "avg_pnl": -0.12,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.667,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "snowleopard1": {
+      "whale_name": "snowleopard1",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.2813,
+      "total_trades": 32,
+      "total_pnl": -44.06,
+      "avg_pnl": -1.38,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.29,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 1.0
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "surf": {
+      "whale_name": "surf",
+      "classification": "mixed_entity",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": 1127.81,
+      "avg_pnl": 375.94,
+      "categories": [
+        "economics",
+        "geopolitics"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.2
+    },
+    "surfandturf": {
+      "whale_name": "surfandturf",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": -13.07,
+      "avg_pnl": -4.36,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "takeormake": {
+      "whale_name": "takeormake",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.3333,
+      "total_trades": 3,
+      "total_pnl": 3.7799999999999994,
+      "avg_pnl": 1.26,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.333,
+        "pnl_positive": 1.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.15
+      },
+      "action": "ignore",
+      "action_confidence": 0.3
+    },
+    "wan123": {
+      "whale_name": "wan123",
+      "classification": "degenerate_human",
+      "confidence": 1.0,
+      "win_rate": 0.0,
+      "total_trades": 7,
+      "total_pnl": -103.93,
+      "avg_pnl": -14.85,
+      "categories": [
+        "geopolitics",
+        "technology",
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.35
+      },
+      "action": "fade",
+      "action_confidence": 1.0
+    },
+    "weflyhigh": {
+      "whale_name": "weflyhigh",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 15,
+      "total_pnl": -29.5,
+      "avg_pnl": -1.97,
+      "categories": [
+        "sports"
+      ],
+      "category_performance": {},
+      "signals": {
+        "win_rate": 0.0,
+        "pnl_positive": 0.0,
+        "two_sided_ratio": 0.0,
+        "consistency": 0.45
+      },
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "bossoskil1": {
+      "whale_name": "bossoskil1",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.8,
+      "total_trades": 5,
+      "total_pnl": 123.69,
+      "avg_pnl": 24.74,
+      "categories": [
+        "sports"
+      ],
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "Sassy-Bucket": {
+      "whale_name": "Sassy-Bucket",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.7273,
+      "total_trades": 11,
+      "total_pnl": 6.140000000000001,
+      "avg_pnl": 0.56,
+      "categories": [
+        "sports"
+      ],
+      "action": "copy",
+      "action_confidence": 0.7
+    },
+    "sleepy-panda": {
+      "whale_name": "sleepy-panda",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 8,
+      "total_pnl": -10.64,
+      "avg_pnl": -1.33,
+      "categories": [
+        "sports"
+      ],
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "0xa0f21e6d351baa9185716b5c00c2925ed9621848": {
+      "whale_name": "0xa0f21e6d351baa9185716b5c00c2925ed9621848",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 4,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "categories": [
+        "sports"
+      ],
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "Ferwhere": {
+      "whale_name": "Ferwhere",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 6,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "categories": [
+        "sports"
+      ],
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "jdsahgf": {
+      "whale_name": "jdsahgf",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 13,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "categories": [
+        "sports"
+      ],
+      "action": "fade",
+      "action_confidence": 0.7
+    },
+    "sybil_meta_sybil_group_1": {
+      "whale_name": "sybil_meta_sybil_group_1",
+      "classification": "unknown",
+      "confidence": 0.3,
+      "win_rate": 0.0,
+      "total_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "categories": [
+        "sports"
+      ],
+      "action": "fade",
+      "action_confidence": 0.7
+    }
+  }
+}
