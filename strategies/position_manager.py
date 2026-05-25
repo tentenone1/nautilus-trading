@@ -197,6 +197,17 @@ class PositionManager:
             s.log.info(f"REJECT confidence={confidence:.2f} < 0.15 | {inst_id}")
             return
 
+        # Sports market defense-in-depth: block whale-following positions in sports.
+        # Whales have 28% WR in sports; autoresearch handles sports markets.
+        combined = f"{market_title}|{market_category}".lower()
+        if any(p in combined for p in (
+            'nba', 'nfl', 'mlb', 'nhl', 'ncaaf', 'ncaab', 'ufc', 'boxing',
+            'tennis', 'soccer', 'football', 'basketball', 'baseball', 'hockey',
+            'sports', 'game ', 'championship', 'finals', 'playoffs', 'season',
+        )):
+            s.log.warning(f"SPORTS_POSITION_BLOCK: rejecting whale-following position in sports market | {market_title[:50]}")
+            return
+
         open_positions = s.cache.positions_open(instrument_id=inst_id)
         if open_positions and open_positions[0].quantity.as_double() != 0:
             s.log.info(f"Already have position in {inst_id}, skipping")

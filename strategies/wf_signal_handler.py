@@ -146,12 +146,27 @@ class SignalHandler:
             tier = self.whale_tiering.get_tier(alpha_score) if self.whale_tiering else "unknown"
             tier_config = self.whale_tiering.get_tier_config(alpha_score) if self.whale_tiering else {}
 
-        # ── Step 2: Risk checks (RiskManager if available) ────────────────────
+        # ── Step 2: Sports gate — route sports through autoresearch only ─────────
+        mc = getattr(signal, 'market_category', '') or ''
+        market_title = getattr(signal, 'market_title', '') or ''
+        # Inline sports check: combine title + category for pattern matching
+        combined = f"{market_title}|{mc}".lower()
+        is_sports = any(p in combined for p in (
+            'nba', 'nfl', 'mlb', 'nhl', 'ncaaf', 'ncaab', 'ufc', 'boxing',
+            'tennis', 'soccer', 'football', 'basketball', 'baseball', 'hockey',
+            'sports', 'game ', 'championship', 'finals', 'playoffs', 'season',
+        ))
+        if is_sports:
+            # Sports whale signals: block entirely. Whales have 28% WR in sports,
+            # autoresearch has 45% WR — sports must go through the autoresearch path.
+            self.log.info(f"SPORTS_GATE: blocking whale signal for sports market | {signal.condition_id[:40]}")
+            return
+
+        # ── Step 3: Risk checks (RiskManager if available) ────────────────────
         if not self.config.auto_trade:
             self.log.debug("Auto-trade disabled, skipping signal execution")
             return
 
-        mc = getattr(signal, 'market_category', '') or ''
         if self.risk_manager is not None and self.risk_state is not None:
             self.risk_state.daily_pnl = self._s._daily_pnl
             self.risk_state.daily_loss_breached = self._s._daily_loss_breached
