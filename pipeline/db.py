@@ -91,15 +91,15 @@ def upsert_whale(address: str, name: str, alpha_score: float = 0,
     """Insert or update a whale record."""
     now = datetime.now(timezone.utc).isoformat()
     conn = get_connection()
-    # Write directly to whales_new to bypass read-only view
+    # Write to whales table (was: whales_new — added 2026-05-25 to fix missing table bug)
     existing = conn.execute(
-        "SELECT discovered_at FROM whales_new WHERE address = ?", (address,)
+        "SELECT discovered_at FROM whales WHERE address = ?", (address,)
     ).fetchone()
     discovered = existing[0] if existing else now
     conn.execute("""
-        INSERT INTO whales_new (address, name, alpha_score, pnl, volume,
-                               win_rate, total_trades, market_category, tags, last_seen,
-                               discovered_at, updated_at, capital_tier, precision_tier)
+        INSERT INTO whales (address, name, alpha_score, pnl, volume,
+                            win_rate, total_trades, market_category, tags, last_seen,
+                            discovered_at, updated_at, capital_tier, precision_tier)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(address) DO UPDATE SET
             name = excluded.name,

@@ -91,7 +91,7 @@ class SignalBridge:
     def check_sybil_signals(self) -> None:
         """Poll sybil signal queue -- conservative integration.
 
-        Filters: confidence 0.65-0.72, max $100 position.
+        Filters: confidence 0.60-0.95, max $100 position.
         Clears queue after processing to prevent re-execution on crash.
         """
         from strategies.whale_tracker_new import WhaleSignal, WhaleSignalType
@@ -115,10 +115,11 @@ class SignalBridge:
             processed = 0
             for s in signals:
                 confidence = s.get("confidence", 0.5)
-                # Confidence filter: only 65-72% zone
-                if confidence < 0.65 or confidence > 0.72:
+                # Confidence filter: 0.60-0.95 (high conviction sybil calls above 0.90
+                # are typically consensus clusters — these are our best signals)
+                if confidence < 0.60 or confidence > 0.95:
                     mt = s.get("market_title", "")
-                    self.log.info(f"Sybil signal skipped -- confidence {confidence:.2f} outside 0.65-0.72 zone | {mt}")
+                    self.log.info(f"Sybil signal skipped -- confidence {confidence:.2f} outside 0.60-0.95 zone | {mt}")
                     continue
 
                 # Map side
@@ -155,7 +156,7 @@ class SignalBridge:
                 self._s._on_signal(signal_obj)
                 processed += 1
             if processed:
-                self.log.info(f"Sybil signals: {processed} queued signals processed (65-72% filter)")
+                self.log.info(f"Sybil signals: {processed} queued signals processed (0.60-0.95 filter)")
         except Exception as e:
             self.log.error(f"Sybil signal check failed: {e}")
 
