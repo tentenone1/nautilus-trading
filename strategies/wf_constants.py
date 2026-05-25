@@ -9,6 +9,10 @@ from __future__ import annotations
 from nautilus_trader.config import StrategyConfig
 from nautilus_trader.model.identifiers import InstrumentId
 
+# ── Configuration Version ──────────────────────────────────────────────────
+
+CONFIG_VERSION = "v5.3-crypto-fade-autoresearch-fix"
+
 
 # ── Trade Buffer Thresholds ──────────────────────────────────────────────────
 
@@ -32,15 +36,10 @@ LOW_CASH_ALERT_PCT = 0.20  # Warn when free balance drops below 20% of bankroll
 # ── Whale Blacklists (auto-reject proven losers, data from trades.db) ────────
 
 WHALE_BLACKLIST = frozenset({
-    "asdfjh",           # -7,375 on sports
-    "bossoskil1",         # -6,209 actual P&L, 36% WR (jailbreak FADE)
-    "benwyatt",         # -1,866 on sports
-    "Sassy-Bucket",     # -1,277 on sports
-    "JPMorgan101",      # -1,510 on sports
-    "joblessfinalboss", # -1,446 on sports
-    "TTEST2",           # -17,419 actual P&L
-    "Wannac",           # -1,119 actual P&L
-    # Auto-blacklisted from entity clusters (2026-05-08)
+    # ── Proven losers (overall WR < 20%, should_fade=1) ──
+    "TTEST2",           # -17,419 actual P&L, 0% WR
+    "weflyhigh",        # 7% WR, should_fade=1
+    # ── Entity cluster fades ──
     "AppleTime67",      # entity cluster — should_fade=True (degenerate_human)
     "Dvitaminbets",     # entity cluster — should_fade=True (degenerate_human)
     "Herdonia",         # entity cluster — should_fade=True (degenerate_human)
@@ -49,23 +48,29 @@ WHALE_BLACKLIST = frozenset({
     "Talvez10",         # entity cluster — should_fade=True (degenerate_human)
     "beetlepimp",       # entity cluster — should_fade=True (degenerate_human)
     "loitterer",        # entity cluster — should_fade=True (market_maker)
-    "mooseborzoi",      # entity cluster — should_fade=True (degenerate_human)
     "pilotlady",        # entity cluster — should_fade=True (degenerate_human)
     "trade-via-Gravia", # entity cluster — should_fade=True (market_maker)
-    "SMCAOMCRL",        # entity cluster — skilled_human
-    "meifei123",        # entity cluster — skilled_human
-    "autoresearch_llm",  # entity cluster — degenerate_human
     "Hehaj648jeh",       # entity cluster — mixed_entity
     "phonesculptor",    # entity cluster — mixed_entity
-    "snowleopard1",     # entity cluster — mixed_entity
     "sybil_group_1",    # entity cluster — degenerate_human
+    "JewishNinja",        # 15% WR proven loser — fade candidate
+    "Wannac",           # -1,119 actual P&L, 1 trade only — watch
+    "p37-0xe5efd6",     # 0% WR crypto (8 trades, -$1,761) — fade candidate
 })
 
 SPORTS_WHALE_BLACKLIST = frozenset({
-    "SMCAOMCRL",         # -6,209 on sports (profitable on general)
+    # v5.0-emergency-fix: added COMEONDUDE (0% WR in sports, 10 trades, -$43.28)
+    "COMEONDUDE",
     "LaBradfordSmith22", # -2,111 on sports (profitable on general)
     "TheVeryGoodCow",    # -613 on sports
     "beetlepimp",        # -399 on sports
+    # Profitable overall but lose on sports — fade in sports only
+    "asdfjh",           # 84% WR overall, -7,375 on sports
+    "bossoskil1",       # 95% WR overall, -6,209 on sports
+    "Sassy-Bucket",     # 95% WR overall, -1,277 on sports
+    "benwyatt",         # -1,866 on sports
+    "JPMorgan101",      # -1,510 on sports
+    "joblessfinalboss", # -1,446 on sports
 })
 
 
@@ -246,14 +251,14 @@ ALLOWED_WHALE_TYPES = frozenset({
     "skilled_human",       # Consistent profitable traders
     "sacrificial_account", # Entity cluster sacrificial accounts
     "degenerate_human",    # High-volume risk-takers (some profitable)
+    "mixed_entity",        # Entity clusters with mixed signals (opened v4.0 for data gathering)
+    "unknown",             # Unclassified whales (opened v4.0 for data gathering)
+    "whale",               # Generic classification (opened v4.0 for data gathering)
 })
 
 # Blocked whale types — reject unverified/unprofitable whale types
 BLOCKED_WHALE_TYPES = frozenset({
-    "unknown",         # Unclassified whales
-    "mixed_entity",    # Entity clusters with mixed signals
-    "whale",           # Generic classification (no track record)
-    "bob",             # Deprecated classification
+    "bob",             # Deprecated classification only
 })
 
 
