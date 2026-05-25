@@ -1,0 +1,60 @@
+"""Gap State Tracker — Signal/trade gap monitoring for stall detection.
+
+Extracted from WhaleFollower to decompose the god class. Handles:
+  - Updating signal_trade_gap_state.json on every valid signal
+  - Tracking recent_signals, recent_trades, timestamps
+  - Atomic write via temp file + rename
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+DEFAULT_GAP_STATE = {
+    "prev_open_count": 0,
+    "stall_start": None,
+    "consecutive_gaps": 0,
+    "recent_signals": 0,
+    "latest_signal": None,
+    "recent_trades": 0,
+    "latest_trade": None,
+    "open_trade_count": 0,
+}
+
+
+def update_gap_state(signal, state_file: Path | None = None) -> None:
+    """Update signal_trade_gap_state.json on every valid signal.
+
+    Increments signal/trade counters, updates timestamps, resets gap counters.
+    Atomic write via temp file + rename.
+
+    Args:
+        signal: A WhaleSignal object (attributes not used, just triggers the update).
+        state_file: Path to the state file. Defaults to project_root/.signal_trade_gap_state.json
+    """
+    if state_file is None:
+        state_file = Path(__file__).parent.parent / ".signal_trade_gap_state.json"
+
+    try:
+        if state_file.exists():
+            with open(state_file) as f:
+                state = json.load(f)
+        else:
+            state = DEFAULT_GAP_STATE.copy()
+    except (FileNotFoundError, json.JSONDecodeError):
+        state = DEFAULT_GAP_STATE.copy()
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    state["recent_signals"] = state.get("recent_signals", 0) + 1
+    state["latest_signal"] = now_iso
+    state["recent_trades"] = state.get("recent_trades", 0) + 1
+    state["latest_trade"] = now_iso
+    state["consecutive_gaps"] = 0
+
+    tmp = state_file.with_suffix(".tmp")
+    with open(tmp, "w") as f:
+        json.dump(state, f, indent=2)
+    tmp.rename(state_file)
