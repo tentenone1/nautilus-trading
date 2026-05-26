@@ -138,6 +138,32 @@ def main():
     if open_count >= max_pos * 0.8:
         log.warning(f"POSITION_CAP_NEAR: {open_count}/{max_pos}")
 
+    # ── Autoresearch health check (from heartbeat JSON written by silence alerter) ──
+    ar_health = heartbeat.get('autoresearch_health', {})
+    if ar_health:
+        ar_status = ar_health.get('status', 'unknown')
+        ar_trades_4h = ar_health.get('trade_count_4h', 0)
+        ar_trades_24h = ar_health.get('trade_count_24h', 0)
+        ar_pnl_24h = ar_health.get('pnl_24h', 0.0)
+        ar_last_ts = ar_health.get('last_trade_ts', 'NEVER')
+        ar_checked = ar_health.get('checked_at', '')
+
+        if ar_status == 'CRITICAL':
+            log.error(
+                f"AUTORESEARCH_CRITICAL | 0 trades in 4h | "
+                f"24h: {ar_trades_24h} trades ${ar_pnl_24h:.2f} | "
+                f"last: {ar_last_ts} | checked: {ar_checked}"
+            )
+        elif ar_status == 'WARNING':
+            log.warning(
+                f"AUTORESEARCH_WARNING | {ar_trades_4h} trades in 4h | "
+                f"24h: {ar_trades_24h} trades ${ar_pnl_24h:.2f} | "
+                f"last: {ar_last_ts}"
+            )
+    else:
+        # Silence alerter hasn't run yet or heartbeat missing
+        log.warning("AUTORESEARCH_HEALTH_MISSING: no autoresearch_health in heartbeat")
+
 
 if __name__ == "__main__":
     main()

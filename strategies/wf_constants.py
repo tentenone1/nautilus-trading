@@ -4,36 +4,26 @@ All module-level constants and the WhaleFollowerConfig dataclass,
 extracted from whale_follower.py for centralized management.
 
 ============================================
-v5.5 PHASE D FREEZE — 2026-05-26
+v5.6-sports-bypass FREEZE — 2026-05-26
 ============================================
 CHANGELOG:
-  • G1:  Correlation Gate — block simultaneous copy+fade of correlated whales
-  • G2:  Realistic Slippage — 200bps, 70% fill prob (was 0bps)
-  • G3:  Exit Strategy Audit — max_hold exit added; pre_res 48h stop-loss confirmed
-  • G4:  LLM Degraded-Mode Fallback — signal_bridge.py graceful degradation
-  • G5:  Heartbeat Alert Cron — paper trader health monitoring
-  • G6:  Edge Scorer Feature Upgrade — category + whale WR + action multiplier
-  • C4:  Poly_data Fade Target Backtest — p102-0xf68a28 validated (PARTIAL_OR_HOLD)
-  • C5:  deep_value & panic_fade offline — both NEGATIVE, do not deploy
+  • T1:  Sports Quarantine Bypass — autoresearch (model_insider) signals now
+           bypass ALL 3 sports quarantine checkpoints (wf_signal_handler.py,
+           signal_pipeline.py, position_manager.py). Whale_tracker and sybil
+           sports signals remain quarantined.
+  • T2:  Autoresearch Sports P&L Circuit Breaker — if the last 100 sports
+           trades from autoresearch sum below -$50, the bypass is disabled
+           and sports quarantine is re-enabled for all sources.
+  • T3:  Config Version Enforcement — config_version is now NOT NULL in the
+           DB schema; a post-write consistency check runs at startup and
+           every 4 hours.
+  • T4:  Bad Slippage Data Flagged — trades with slippage_bps = ±10000 or
+           NULL actual_fill_price are marked data_quality='suspect'.
 
 CONFIG:
-  • ACTIVE_CONFIG_VERSION = "v5.5"
-  • COPY_WIN_RATE_BOOST = 2.0 (edge_scorer.py)
-  • FADE_WIN_RATE_BOOST  = 2.2 (edge_scorer.py)
-
-FADE CANDIDATES (paper-only, requires further validation before live):
-  • p102-0xf68a28 — MOMENTUM, 26% WR, +$139 live PnL. Fading: +$327 (C4 validated)
-    Status: HOLD — do not activate in live until 30-day paper confirms
-
-BLACKLIST ADDITIONS THIS FREEZE:
-  • p232-0xd10695 — SKIP (0% WR contrarian, too risky)
-  • p37-0xe5efd6  — SKIP (INFORMATION type, wrong for fade)
-  • TTEST2         — confirmed in WHALE_BLACKLIST already
-
-STABILITY:
-  • Service running since 2026-05-26 12:25:58 CST
-  • All Phase A-C tasks complete
-  • Phase D freeze complete
+  • ACTIVE_CONFIG_VERSION = "v5.6-sports-bypass"
+  • SPORTS_QUARANTINE_BYPASS_SOURCES = {'model_insider', 'autoresearch'}
+  • AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER = -$50 (window: 100 trades)
 ============================================
 """
 
@@ -51,8 +41,31 @@ CONFIG_VERSION = "v5.4-sports-quarantine-fix"
 # etc. whenever a config-changing code change is deployed. The 48h P&L gate
 # uses this to detect a code/DB version mismatch and blocks trading if the
 # most recent closed trade was recorded under a different version.
-ACTIVE_CONFIG_VERSION = "v5.5"
+ACTIVE_CONFIG_VERSION = "v5.6-sports-bypass"
 
+
+# ── Autoresearch Sports Quarantine Bypass (v5.6) ─────────────────────────
+# Signal sources allowed to bypass the sports quarantine. Autoresearch has
+# demonstrated +$1,243 on 531 clean sports trades; whale_tracker sports has
+# cost -$4,143 on 936 trades, so only autoresearch bypasses the quarantine.
+SPORTS_QUARANTINE_BYPASS_SOURCES: frozenset[str] = frozenset({
+    "model_insider",
+    "autoresearch",
+    "autoresearch_llm",
+})
+
+# Whale names (not signal sources) that bypass the sports quarantine.
+# Kept as a separate frozenset for clarity; 'autoresearch_llm' is also in
+# SPORTS_QUARANTINE_BYPASS_SOURCES so the check covers both dimensions.
+SPORTS_QUARANTINE_BYPASS_WHALE_NAMES: frozenset[str] = frozenset({
+    "autoresearch_llm",
+})
+
+# Circuit breaker: if the last N sports trades from autoresearch sum below
+# this threshold, the bypass is disabled and sports quarantine is re-enabled
+# for all sources (including autoresearch) to prevent cascade losses.
+AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER: float = -50.0  # USD
+AUTORESEARCH_SPORTS_CIRCUIT_BREAKER_WINDOW: int = 100   # trades
 
 # ── Trade Buffer Thresholds ──────────────────────────────────────────────────
 

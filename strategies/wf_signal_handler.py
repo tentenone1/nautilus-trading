@@ -170,13 +170,39 @@ class SignalHandler:
             'rangers', 'oilers', 'penguins', 'maple leafs', 'devils', 'avalanche',
             'diamondbacks', 'guardians', 'phillies', 'mariners', 'twins', 'orioles',
         ))
+        # ── Step 2: HARD SPORTS QUARANTINE — with autoresearch bypass ─────────────
+        # v5.6: Autoresearch (model_insider) has demonstrated +$1,243 on 531 clean
+        # sports trades. It bypasses the quarantine; whale_tracker and sybil sports
+        # remain blocked. A P&L circuit breaker re-quarantines autoresearch if its
+        # last 100 sports trades drop below -$50.
         if is_sports:
-            self.log.info(
-                f"SPORTS_QUARANTINE [v5.0]: blocking ALL sports signals | "
-                f"whale={signal.whale_name} | {signal.condition_id[:30]}... | "
-                f"is_fade={is_fade}"
+            from strategies.wf_constants import (
+                SPORTS_QUARANTINE_BYPASS_SOURCES,
+                AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER,
+                AUTORESEARCH_SPORTS_CIRCUIT_BREAKER_WINDOW,
             )
-            return
+            signal_source = getattr(signal, 'source', '') or ''
+            is_autoresearch = (
+                signal_source in SPORTS_QUARANTINE_BYPASS_SOURCES
+                or getattr(signal, 'whale_name', '') == 'autoresearch_llm'
+            )
+
+            if is_autoresearch and not self._check_autoresearch_sports_circuit_breaker():
+                # Circuit breaker not triggered — allow autoresearch through
+                self.log.info(
+                    f"SPORTS_QUARANTINE_BYPASS [v5.6] | autoresearch allowed | "
+                    f"whale={signal.whale_name} | {signal.condition_id[:30]}... | "
+                    f"market={market_title[:50]}"
+                )
+            else:
+                # Either not autoresearch, or circuit breaker triggered — block
+                block_reason = "circuit_breaker" if is_autoresearch else "sports_quarantine"
+                self.log.info(
+                    f"SPORTS_QUARANTINE [v5.6]: blocking sports signal | "
+                    f"whale={signal.whale_name} | {signal.condition_id[:30]}... | "
+                    f"is_fade={is_fade} | source={signal_source} | reason={block_reason}"
+                )
+                return
 
         # ── Step 3: Risk checks (RiskManager if available) ────────────────────
         if not self.config.auto_trade:
@@ -639,3 +665,96 @@ class SignalHandler:
             f"Could not get instrument for {condition_id[:20]}... (all tiers exhausted)"
         )
         return None
+
+    # ── Autoresearch Sports P&L Circuit Breaker ──────────────────────────
+
+    _ar_sports_cb_cache_time: float = 0.0
+    _ar_sports_cb_cache_result: bool = False
+
+    def _check_autoresearch_sports_circuit_breaker(self) -> bool:
+        """Return True if the circuit breaker is triggered (re-quarantine autoresearch).
+
+        Checks the sum of realized_pnl over the last N sports trades from
+        autoresearch. If below AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER, the
+        sports quarantine bypass is disabled for all sources.
+
+        Result is cached for 5 minutes to avoid hammering the DB on every signal.
+        """
+        import time as _time
+        import sqlite3 as _sqlite3
+        from pathlib import Path as _Path
+        from strategies.wf_constants import (
+            AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER,
+            AUTORESEARCH_SPORTS_CIRCUIT_BREAKER_WINDOW,
+        )
+
+        # 5-minute TTL cache
+        now = _time.time()
+        if now - self._ar_sports_cb_cache_time < 300:
+            return self._ar_sports_cb_cache_result
+
+        _DB = _Path("/home/elon-1/workspace/nautilus-trading/data/trades.db")
+        if not _DB.exists():
+            self._ar_sports_cb_cache_time = now
+            self._ar_sports_cb_cache_result = False
+            return False
+
+        try:
+            conn = _sqlite3.connect(str(_DB))
+            conn.execute("PRAGMA busy_timeout=5000")
+            # Identify sports trades using keyword patterns in market_title
+            cursor = conn.execute("""
+                SELECT SUM(realized_pnl) FROM (
+                    SELECT realized_pnl FROM trades
+                    WHERE signal_source IN ('model_insider', 'autoresearch_llm')
+                      AND realized_pnl IS NOT NULL
+                      AND (
+                          market_title LIKE '%vs%'
+                       OR market_title LIKE '%O/U%'
+                       OR market_title LIKE '%Spread:%'
+                       OR market_title LIKE '%Counter-Strike%'
+                       OR market_title LIKE '%Up or Down%'
+                       OR market_title LIKE '%BO3%'
+                       OR market_title LIKE '%BO5%'
+                       OR market_title LIKE '%Roland Garros%'
+                       OR market_title LIKE '%ITF%'
+                       OR market_title LIKE '%WTA%'
+                       OR market_title LIKE '%ATP%'
+                       OR market_title LIKE '%NBA%'
+                       OR market_title LIKE '%NFL%'
+                       OR market_title LIKE '%MLB%'
+                       OR market_title LIKE '%NHL%'
+                       OR market_title LIKE '%Valorant%'
+                       OR market_title LIKE '%Dota%'
+                       OR market_title LIKE '%League of Legends%'
+                      )
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                )
+            """, (AUTORESEARCH_SPORTS_CIRCUIT_BREAKER_WINDOW,))
+            row = cursor.fetchone()
+            conn.close()
+
+            pnl_sum = row[0] if row and row[0] is not None else 0.0
+            triggered = pnl_sum < AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER
+
+            if triggered:
+                self.log.warning(
+                    f"AUTORESEARCH_SPORTS_CIRCUIT_BREAKER | P&L=${pnl_sum:.2f} over last "
+                    f"{AUTORESEARCH_SPORTS_CIRCUIT_BREAKER_WINDOW} sports trades < "
+                    f"${AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER:.0f} threshold | "
+                    f"re-quarantining autoresearch sports"
+                )
+
+            self._ar_sports_cb_cache_time = now
+            self._ar_sports_cb_cache_result = triggered
+            return triggered
+
+        except Exception as e:
+            self.log.warning(
+                f"AUTORESEARCH_SPORTS_CIRCUIT_BREAKER query failed: {e} | "
+                f"failing open (allowing autoresearch sports)"
+            )
+            self._ar_sports_cb_cache_time = now
+            self._ar_sports_cb_cache_result = False
+            return False

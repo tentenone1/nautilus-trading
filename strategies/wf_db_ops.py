@@ -310,6 +310,19 @@ def log_trade_to_db(
             whale_type,
         ))
         conn.execute("COMMIT")
+
+        # ── Slippage sanity check (v5.6) ──────────────────────────────────────
+        # Warn if slippage_bps exceeds ±500 bps — this should already be clamped
+        # in state_manager.py, but flag it as a data quality signal.
+        if actual_fill_price is not None and slippage_bps is not None:
+            if abs(slippage_bps) > 500:
+                _warn_msg = (
+                    f"SUSPECT_SLIPPAGE | trade_id={trade_id} | "
+                    f"slippage_bps={slippage_bps:.1f} exceeds ±500 | clamped upstream"
+                )
+                if log_func:
+                    log_func(f"[DB WARNING] {_warn_msg}")
+
         conn.close()
         conn = None
 
@@ -583,6 +596,59 @@ def get_category_pnl(
         return {row[0]: float(row[1]) for row in cur.fetchall()}
     except Exception:
         return {}
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def verify_config_version_integrity(
+    db_path: str | None = None,
+    hours: int = 24,
+    log_func: Callable[[str], None] | None = None,
+) -> int:
+    """Alert if any trades in the last N hours have missing/unknown config_version.
+
+    Called once at startup and every 4 hours to detect schema drift where
+    new code writes 'unknown' config_version due to a deployment or migration issue.
+
+    Args:
+        db_path: Path to trades.db. Defaults to research/trades.db.
+        hours: Check trades in the last N hours. Default 24.
+        log_func: Optional logging callable for warnings.
+
+    Returns:
+        Number of trades with missing/unknown config_version.
+    """
+    db = Path(db_path) if db_path else _DEFAULT_DB_PATH
+    if not db.exists():
+        return 0
+    conn = None
+    try:
+        conn = sqlite3.connect(str(db))
+        conn.execute("PRAGMA busy_timeout=5000")
+        cursor = conn.execute("""
+            SELECT COUNT(*) FROM trades
+            WHERE (config_version IS NULL OR config_version = '' OR config_version = 'unknown')
+              AND timestamp > datetime('now', '-? hours')
+        """, (hours,))
+        row = cursor.fetchone()
+        count = row[0] if row else 0
+        conn.close()
+        if count > 0:
+            msg = (
+                f"CONFIG_VERSION_INTEGRITY | {count} trades in last {hours}h "
+                f"with missing/unknown config_version"
+            )
+            if log_func:
+                log_func(f"[DB WARNING] {msg}")
+        return count
+    except Exception as e:
+        if log_func:
+            log_func(f"[DB WARNING] CONFIG_VERSION_INTEGRITY check failed: {e}")
+        return 0
     finally:
         if conn:
             try:

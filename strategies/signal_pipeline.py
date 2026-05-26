@@ -455,31 +455,44 @@ class SignalPipeline:
             result.reject_reason = f"category_not_allowed:{category_lower}"
             return result
 
-        # ── Phase A2 Sports Quarantine (COMPLETE) ──────────────────────────
-        # Block ALL sports trades unless they match a whitelist pattern (v5.6 fix).
-        # The whitelist allows specific political/government-outcome sports markets
-        # that are tradeable events (e.g. election-related sports props) while still
-        # blocking pure recreational sports (Knicks, Phillies, Yankees, etc.).
+        # ── Phase A2 Sports Quarantine — with autoresearch bypass ─────────────────
+        # v5.6: Autoresearch (model_insider) bypasses the sports quarantine.
+        # Whale_tracker and sybil sports signals remain quarantined.
         if is_sports or category_lower == "sports":
-            market_title = getattr(signal, "market_title", "") or ""
-            whitelist_hit = any(
-                re.search(p, market_title, re.IGNORECASE)
-                for p in SPORTS_WHITELIST_PATTERNS
+            signal_source = getattr(signal, 'source', '') or ''
+            from strategies.wf_constants import SPORTS_QUARANTINE_BYPASS_SOURCES
+            is_autoresearch = (
+                signal_source in SPORTS_QUARANTINE_BYPASS_SOURCES
+                or getattr(signal, 'whale_name', '') == 'autoresearch_llm'
             )
-            if whitelist_hit:
+            if is_autoresearch:
+                # Autoresearch allowed through — fall through to remaining pipeline checks
                 if log:
                     log.info(
-                        f"PIPELINE_SPORTS_WHITELIST_HIT | {signal.whale_name} | "
-                        f"market={market_title[:60]}"
+                        f"PIPELINE_SPORTS_BYPASS | autoresearch allowed | "
+                        f"whale={signal.whale_name} | market={getattr(signal, 'market_title', '')[:50]}"
                     )
             else:
-                if log:
-                    log.info(
-                        f"PIPELINE_REJECT | sports_quarantine | {signal.whale_name} | "
-                        f"market={market_title[:40]}"
-                    )
-                result.reject_reason = "sports_quarantine"
-                return result
+                # Non-autoresearch: apply existing whitelist/quarantine logic
+                market_title = getattr(signal, "market_title", "") or ""
+                whitelist_hit = any(
+                    re.search(p, market_title, re.IGNORECASE)
+                    for p in SPORTS_WHITELIST_PATTERNS
+                )
+                if whitelist_hit:
+                    if log:
+                        log.info(
+                            f"PIPELINE_SPORTS_WHITELIST_HIT | {signal.whale_name} | "
+                            f"market={market_title[:60]}"
+                        )
+                else:
+                    if log:
+                        log.info(
+                            f"PIPELINE_REJECT | sports_quarantine | {signal.whale_name} | "
+                            f"market={market_title[:40]}"
+                        )
+                    result.reject_reason = "sports_quarantine"
+                    return result
 
         # Sports-specific restrictions (skip for fade signals — fading losing whales)
         # NOTE: this block is now dead code for sports markets since the quarantine

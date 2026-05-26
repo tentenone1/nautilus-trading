@@ -37,6 +37,40 @@ faulthandler.enable()
 # Fix: Line-buffered stdout so crash output isn't silently lost
 sys.stdout.reconfigure(line_buffering=True)
 
+# ── Crash Rate Limiter (v5.6) ───────────────────────────────────────────────
+# Track SIGABRT crash rate to prevent restart loops.
+# After CRASH_THRESHOLD crashes in CRASH_WINDOW seconds, write .crash_halt
+# and refuse to restart until manual intervention.
+_CRASH_COUNT_FILE = Path(__file__).parent / ".crash_count"
+_CRASH_THRESHOLD = 2   # crashes per hour before halting
+_CRASH_WINDOW = 3600   # 1 hour in seconds
+_crash_count_ref = {"count": 0}  # updated by record_crash(), read by handler
+
+def _record_crash():
+    """Record a crash event. Returns True if crash rate exceeds threshold."""
+    now = time_module.time()
+    crashes = []
+
+    if _CRASH_COUNT_FILE.exists():
+        try:
+            for line in _CRASH_COUNT_FILE.read_text().strip().split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ts = float(line)
+                    if now - ts < _CRASH_WINDOW:
+                        crashes.append(ts)
+                except ValueError:
+                    pass
+        except Exception:
+            crashes = []
+
+    crashes.append(now)
+    _CRASH_COUNT_FILE.write_text('\n'.join(str(c) for c in crashes) + '\n')
+    _crash_count_ref["count"] = len(crashes)
+    return len(crashes) >= _CRASH_THRESHOLD
+
 # ── SIGABRT handler — write crash trace before dying so we catch the root cause ──
 def _sigabrt_handler(signum, frame):
     import traceback, resource, faulthandler
@@ -77,6 +111,17 @@ def _sigabrt_handler(signum, frame):
                 f.write(f"  Max RSS: {res.ru_maxrss} KB\n")
             except Exception:
                 pass
+        # ── v5.6: Record crash and check crash rate ─────────────────────
+        crash_count_exceeded = _record_crash()
+        crash_count = _crash_count_ref["count"]
+        if crash_count_exceeded:
+            halt_file = Path(__file__).parent / ".crash_halt"
+            halt_file.write_text(
+                f"CRASH_RATE_EXCEEDED at {time_module.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"{crash_count} crashes in {_CRASH_WINDOW}s window\n"
+            )
+            with open(crash_log, "a") as hf:
+                hf.write(f"\nCRASH_RATE_HALTED: {crash_count} crashes in {_CRASH_WINDOW}s — .crash_halt written\n")
         # Re-raise is intentional — but don't re-enter this handler
         f.write(f"\nTerminating PID {os.getpid()} with SIGABRT (re-raised)\n")
     # Use os._exit to avoid Python cleanup/atexit handlers which may deadlock
@@ -707,6 +752,22 @@ if __name__ == "__main__":
     _ws_thread = threading.Thread(target=_ws_watchdog, daemon=True)
     _ws_thread.start()
     print("  WS watchdog started: checking every 30s")
+    print()
+
+    # ── v5.6 Crash halt check: refuse to start if crash rate exceeded ──────────
+    _CRASH_HALT_FILE = Path(__file__).parent / ".crash_halt"
+    if _CRASH_HALT_FILE.exists():
+        print("FATAL: CRASH_RATE_HALTED — paper trader will not start.")
+        print("  Manual intervention required. Remove .crash_halt to resume:")
+        print(f"    rm { _CRASH_HALT_FILE}")
+        print("  Then restart with: systemctl --user restart nautilus-paper.service")
+        sys.exit(1)
+
+    # ── v5.6 Health check delay before trading starts ───────────────────────
+    HEALTH_CHECK_DELAY = 30  # seconds — wait for WS connection, instrument subscription
+    print(f"  Waiting {HEALTH_CHECK_DELAY}s health check delay before trading...")
+    time_module.sleep(HEALTH_CHECK_DELAY)
+    print("  Health check delay complete, resuming trading.")
     print()
 
     try:
