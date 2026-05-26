@@ -65,14 +65,14 @@ def fetch_summary_stats(conn: sqlite3.Connection) -> Tuple[int, int, int]:
     """Return total trades, resolved, and open trade counts.
 
     ``resolved`` are trades where ``actual_pnl IS NOT NULL``.
-    ``open`` are trades where ``exit_price IS NULL`` and ``paper_trade=1``.
+    ``open`` are trades where ``exit_price IS NULL`` and ``exit_reason IS NULL`` and ``paper_trade=1``.
     """
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM trades")
     total = cur.fetchone()[0]
     cur.execute("SELECT COUNT(*) FROM trades WHERE actual_pnl IS NOT NULL")
     resolved = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM trades WHERE exit_price IS NULL AND paper_trade=1")
+    cur.execute("SELECT COUNT(*) FROM trades WHERE exit_price IS NULL AND exit_reason IS NULL AND paper_trade=1")
     open_trades = cur.fetchone()[0]
     return total, resolved, open_trades
 
@@ -96,11 +96,13 @@ def load_capital_state() -> Dict:
 def fetch_open_positions(conn: sqlite3.Connection) -> List[Tuple[int, str]]:
     """Return a list of (trade_id, market_title) for open positions.
 
-    The query uses the conditions specified in the task.
+    Open = exit_price IS NULL AND exit_reason IS NULL (truly unresolved).
+    Trades with an exit_reason but no exit_price are resolved-with-missing-price
+    (e.g. orphan_cleanup) and should not appear as open.
     """
     cur = conn.cursor()
     cur.execute(
-        "SELECT trade_id, market_title FROM trades WHERE exit_price IS NULL AND paper_trade=1"
+        "SELECT trade_id, market_title FROM trades WHERE exit_price IS NULL AND exit_reason IS NULL AND paper_trade=1"
     )
     return cur.fetchall()
 
