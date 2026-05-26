@@ -21,7 +21,9 @@ Environment="PYTHONUNBUFFERED=1"
 
 # Resource limits
 LimitNOFILE=65536
-MemoryMax=4G
+LimitCORE=unlimited   # Core dumps on SIGABRT for Rust backtrace analysis
+# MemoryMax=4G removed — caused cgroup OOM kills misdiagnosed as crashes.
+# The system has 15GB RAM; let the OS manage it naturally with swap.
 
 [Install]
 WantedBy=default.target

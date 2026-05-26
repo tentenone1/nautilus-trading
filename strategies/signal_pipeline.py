@@ -30,6 +30,7 @@ from typing import Optional
 from strategies.wf_constants import (
     WHALE_BLACKLIST,
     SPORTS_WHALE_BLACKLIST,
+    SPORTS_WHITELIST_PATTERNS,
     BLOCKED_CATEGORIES,
     ALLOWED_CATEGORIES,
     BLOCKED_WHALE_TYPES,
@@ -85,6 +86,7 @@ class PipelineResult:
     sybil_decision: str = ""
     edge_result: Optional[EdgeResult] = None
     whale_type: str = ""  # Whale classification for data segmentation
+    skip_edge_scorer: bool = False  # v5.6: bypass edge scorer for premium signal sources
 
 
 class SignalPipeline:
@@ -231,9 +233,11 @@ class SignalPipeline:
             return result
 
 
-        # ── Stage 0.5: Proven whale fast lane (v5.2) ─────────────────────
+        # ── Stage 0.5: Proven whale fast lane (v5.2 + v5.6 fix) ─────
         # Whales with >=20 trades AND >=60% WR in a specific category (non-sports)
         # bypass tier_confidence entirely. Their track record speaks for itself.
+        # v5.6 FIX: Also bypass edge scorer for autoreseartch_llm — the edge scorer's
+        # fallback returns "ignore" for unknown whales, killing our best BUY signal source.
         is_fast_lane = False
         if not (is_sports or mc.lower() == "sports") and signal.whale_name and signal.whale_name != "unknown":
             is_fast_lane = self._check_fast_lane(signal.whale_name, mc, log=log)
@@ -245,6 +249,16 @@ class SignalPipeline:
             if is_fast_lane and self.whale_tiering:
                 alpha_score_fast = getattr(signal, "alpha_score", 50.0) or 50.0
                 result.tier = self.whale_tiering.get_tier(alpha_score_fast)
+            # autoreseartch_llm fast lane also skips the edge scorer — its signals
+            # bypass the tier check but then hit the edge scorer which "ignores" them
+            # because it's not in whale_classifications.json
+            if signal.whale_name == "autoresearch_llm":
+                result.skip_edge_scorer = True
+                if log:
+                    log.info(
+                        f"PIPELINE_FAST_LANE | autoresearch_llm | "
+                        f"bypassing edge_scorer (v5.6 fix)"
+                    )
 
         # ── Stage 1: Tier validation ─────────────────────────────────────
         # Fade signals bypass tier validation — fading works regardless of whale tier
@@ -255,15 +269,18 @@ class SignalPipeline:
             tier = self.whale_tiering.get_tier(alpha_score)
             result.tier = tier
 
-            if not self.whale_tiering.validate_confidence(
-                signal.confidence, alpha_score, []
-            ):
-                effective_min_conf = CATEGORY_MIN_CONFIDENCE.get(
-                    mc.lower(), self.min_confidence
-                )
-                # Use the LOWER of tier-specified min and category-graduated min (v5.2)
-                tier_min_conf = tier_config.get("min_confidence", effective_min_conf)
-                min_conf = min(tier_min_conf, effective_min_conf)
+            # Use the LOWER of tier-specified min and category-graduated min (v5.6).
+            # Previously this was only applied to the log message after validate_confidence
+            # failed — but validate_confidence enforces the tier floor (0.40 for emerging)
+            # which is stricter than the category floor (0.25 for general). The tier floor
+            # blocks non-sports signals that should pass via the category floor.
+            effective_min_conf = CATEGORY_MIN_CONFIDENCE.get(
+                mc.lower(), self.min_confidence
+            )
+            tier_min_conf = tier_config.get("min_confidence", effective_min_conf)
+            min_conf = min(tier_min_conf, effective_min_conf)
+
+            if signal.confidence < min_conf:
                 if log:
                     log.info(
                         f"PIPELINE_REJECT | tier_confidence | {signal.whale_name} | "
@@ -338,7 +355,7 @@ class SignalPipeline:
         edge_val = getattr(signal, "edge_score", 0.0) or 0.0
         result.original_edge = edge_val
 
-        if self.enable_edge_scorer:
+        if self.enable_edge_scorer and not result.skip_edge_scorer:
             category = mc or "unknown"
             edge_result = self.edge_scorer.score_signal(
                 whale_name=signal.whale_name or "",
@@ -439,18 +456,30 @@ class SignalPipeline:
             return result
 
         # ── Phase A2 Sports Quarantine (COMPLETE) ──────────────────────────
-        # Block ALL sports trades regardless of copy/fade/whale_type.
-        # The prior logic only blocked non-fade sports; this blanket gate
-        # ensures sybil sports trades (Knicks, Phillies, Yankees, etc.) are
-        # also rejected when they arrive as fades.
+        # Block ALL sports trades unless they match a whitelist pattern (v5.6 fix).
+        # The whitelist allows specific political/government-outcome sports markets
+        # that are tradeable events (e.g. election-related sports props) while still
+        # blocking pure recreational sports (Knicks, Phillies, Yankees, etc.).
         if is_sports or category_lower == "sports":
-            if log:
-                log.info(
-                    f"PIPELINE_REJECT | sports_quarantine | {signal.whale_name} | "
-                    f"market={getattr(signal, 'market_title', '')[:40]}"
-                )
-            result.reject_reason = "sports_quarantine"
-            return result
+            market_title = getattr(signal, "market_title", "") or ""
+            whitelist_hit = any(
+                re.search(p, market_title, re.IGNORECASE)
+                for p in SPORTS_WHITELIST_PATTERNS
+            )
+            if whitelist_hit:
+                if log:
+                    log.info(
+                        f"PIPELINE_SPORTS_WHITELIST_HIT | {signal.whale_name} | "
+                        f"market={market_title[:60]}"
+                    )
+            else:
+                if log:
+                    log.info(
+                        f"PIPELINE_REJECT | sports_quarantine | {signal.whale_name} | "
+                        f"market={market_title[:40]}"
+                    )
+                result.reject_reason = "sports_quarantine"
+                return result
 
         # Sports-specific restrictions (skip for fade signals — fading losing whales)
         # NOTE: this block is now dead code for sports markets since the quarantine

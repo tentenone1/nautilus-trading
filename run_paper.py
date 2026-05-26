@@ -13,6 +13,7 @@ import asyncio
 import faulthandler
 import json
 import os
+import resource
 import signal
 import sqlite3
 import sys
@@ -22,6 +23,14 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# ── Enable core dumps before anything else ──────────────────────────
+# NautilusTrader's Rust code panics → abort_on_panic → SIGABRT.
+# A core dump gives us the full Rust stack trace for root-cause analysis.
+try:
+    resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIMIT_INFINITY, resource.RLIMIT_INFINITY))
+except Exception as e:
+    print(f"[startup] Could not set RLIMIT_CORE: {e}", flush=True)
+
 # Enable faulthandler FIRST — catch C-level crashes and segfaults with Python traceback
 faulthandler.enable()
 
@@ -30,21 +39,49 @@ sys.stdout.reconfigure(line_buffering=True)
 
 # ── SIGABRT handler — write crash trace before dying so we catch the root cause ──
 def _sigabrt_handler(signum, frame):
-    import traceback
+    import traceback, resource, faulthandler
     crash_log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "sigabrt_crash.log")
     with open(crash_log, "a") as f:
         f.write(f"\n{'='*60}\n")
         f.write(f"SIGABRT received at {time_module.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"PID: {os.getpid()}\n")
+        f.write(f"PID: {os.getpid()}  PPID: {os.getppid()}\n")
         f.write(f"Thread: {threading.current_thread().name}\n")
-        f.write("Full stack trace:\n")
+        # Dump ALL Python thread stacks via faulthandler (covers C/Rust frames too)
+        f.write("\n[faulthandler all-thread traceback]:\n")
+        faulthandler.dump_traceback_all_threads(file=f)
+        # Python stack for the crashing thread
+        f.write("\nFull stack trace (crashing thread):\n")
         traceback.print_stack(frame, file=f)
-        # Print all thread stacks
-        f.write(f"\nAll threads at crash time:\n")
-        for tid, frame in sys._current_frames().items():
+        f.write(f"\nAll Python frames at crash time:\n")
+        for tid, tframe in sys._current_frames().items():
             f.write(f"\n--- Thread {tid} ---\n")
-            traceback.print_stack(frame, file=f)
-    os.kill(os.getpid(), signal.SIGABRT)  # re-raise after logging
+            traceback.print_stack(tframe, file=f)
+        # System diagnostics — memory, swap, open FDs
+        f.write("\nSystem diagnostics:\n")
+        try:
+            import psutil
+            p = psutil.Process(os.getpid())
+            mem = p.memory_info()
+            f.write(f"  RSS: {mem.rss / 1024**2:.1f} MB  VMS: {mem.vms / 1024**2:.1f} MB\n")
+            sys_mem = psutil.virtual_memory()
+            f.write(f"  System RAM: {sys_mem.used/1024**3:.1f}GB / {sys_mem.total/1024**3:.1f}GB "
+                     f"({sys_mem.percent}%)\n")
+            swap = psutil.swap_memory()
+            f.write(f"  Swap: {swap.used/1024**3:.1f}GB / {swap.total/1024**3:.1f}GB "
+                     f"({swap.percent}%)\n")
+            f.write(f"  Open FDs: {p.num_fds()}\n")
+        except Exception as ex:
+            f.write(f"  (psutil unavailable: {ex})\n")
+            try:
+                res = resource.getrusage(resource.RUSAGE_SELF)
+                f.write(f"  Max RSS: {res.ru_maxrss} KB\n")
+            except Exception:
+                pass
+        # Re-raise is intentional — but don't re-enter this handler
+        f.write(f"\nTerminating PID {os.getpid()} with SIGABRT (re-raised)\n")
+    # Use os._exit to avoid Python cleanup/atexit handlers which may deadlock
+    # during a Rust panic.  Do NOT re-raise here — it would re-enter this handler.
+    os._exit(134)  # 134 = 128 + 6 (SIGABRT)
 
 # ── PID file lock — prevent duplicate processes (systemd User= double-fork workaround) ──
 import atexit

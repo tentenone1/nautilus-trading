@@ -168,6 +168,7 @@ class PositionManager:
         confidence: float = 0.0,
         entry_reason: str = "",
         is_fade: bool = False,
+        signal_source: str = "known_whale",
         _validation_signal_id: str = "",
         _validation_snapshot_id: str = "",
     ) -> None:
@@ -310,7 +311,7 @@ class PositionManager:
                 conn.execute("PRAGMA busy_timeout=5000")
                 row48 = conn.execute(
                     "SELECT COALESCE(SUM(realized_pnl), 0.0) FROM trades WHERE "
-                    "exit_time > datetime('now', '-48 hours') AND realized_pnl IS NOT NULL"
+                    "datetime(timestamp, '+' || CAST(COALESCE(duration_seconds, 0) AS INTEGER) || ' seconds') > datetime('now', '-48 hours') AND realized_pnl IS NOT NULL"
                 ).fetchone()
                 conn.close()
                 pnl_48h = float(row48[0]) if row48 else 0.0
@@ -321,14 +322,24 @@ class PositionManager:
                 from strategies.wf_constants import ACTIVE_CONFIG_VERSION
                 try:
                     _conn2 = _sqlite3.connect(str(_DB))
-                    _row_ver = _conn2.execute(
-                        "SELECT config_version FROM trades "
-                        "WHERE exit_time IS NOT NULL AND config_version IS NOT NULL AND config_version != '' "
-                        "ORDER BY exit_time DESC LIMIT 1"
+                    _row_count = _conn2.execute(
+                        "SELECT COUNT(*) FROM trades WHERE config_version = ? AND realized_pnl IS NOT NULL",
+                        (ACTIVE_CONFIG_VERSION,)
                     ).fetchone()
-                    _conn2.close()
-                    _recent_cv = _row_ver[0] if _row_ver else ACTIVE_CONFIG_VERSION
-                    _cv_match = _recent_cv == ACTIVE_CONFIG_VERSION
+                    _row_ver = None
+                    _cv_match = True
+                    if _row_count and _row_count[0] >= 10:
+                        _row_ver = _conn2.execute(
+                            "SELECT config_version FROM trades "
+                            "WHERE duration_seconds IS NOT NULL AND config_version IS NOT NULL AND config_version != '' "
+                            "ORDER BY timestamp DESC LIMIT 1"
+                        ).fetchone()
+                        _conn2.close()
+                        _recent_cv = _row_ver[0] if _row_ver else ACTIVE_CONFIG_VERSION
+                        _cv_match = _recent_cv == ACTIVE_CONFIG_VERSION
+                    else:
+                        _conn2.close()
+                        _cv_match = True  # Not enough data to enforce, allow through
                 except Exception:
                     _cv_match = True  # fail open on DB error
                 if not _cv_match:
@@ -422,6 +433,7 @@ class PositionManager:
             "kelly_fraction": s.config.kelly_fraction,
             "entry_price": price,
             "is_fade": is_fade,
+            "signal_source": signal_source,
             "_validation_signal_id": _validation_signal_id,
             "_validation_snapshot_id": _validation_snapshot_id,
         }

@@ -39,6 +39,13 @@ LLM_TIMEOUT_SECS: int = 60
 API_TIMEOUT_SECS: int = 10
 RUN_TIMEOUT_SECS: int = 110  # Max wall-clock time for single pass (10s buffer for 120s cron)
 
+# LLM retry config for transient model-loading errors (MiniMax "model loading" 503s)
+LLM_MAX_RETRIES: int = 5
+LLM_RETRY_BASE_DELAY: float = 5.0   # seconds; first retry after 5s
+LLM_RETRY_MAX_DELAY: float = 60.0   # cap backoff at 60s
+# HTTP status codes that indicate a transient server-side overload / model loading
+LLM_RETRY_ON_STATUS: set[int] = {503, 504, 502, 429}  # 429 = rate-limited too
+
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 STATE_FILE: Path = PROJECT_ROOT / "research" / "autoresearch_state.json"
 DETECTIONS_FILE: Path = PROJECT_ROOT / "research" / "signal_detections.json"
@@ -115,7 +122,12 @@ def fetch_json(url: str, timeout: int = API_TIMEOUT_SECS) -> Optional[dict | lis
 
 
 def query_llm(prompt: str) -> str:
-    """Query the LLM with a prompt and return the response."""
+    """Query the LLM with a prompt and return the response.
+
+    Implements exponential backoff for transient server errors (503 model loading,
+    504 gateway timeout, 502 bad gateway, 429 rate-limit).  Each retry waits
+    5s * 2^attempt seconds (capped at 60s) before re-sending the same request.
+    """
     payload = json.dumps({
         "model": LLM_MODEL,
         "messages": [
@@ -125,16 +137,67 @@ def query_llm(prompt: str) -> str:
         "max_tokens": 8192,
         "temperature": 0.0
     }).encode()
-    try:
-        req = urllib.request.Request(LLM_URL, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=LLM_TIMEOUT_SECS) as resp:
-            data = json.loads(resp.read())
-        msg = data["choices"][0]["message"]
-        content = msg.get("content", "") or ""
-        return content
-    except Exception as exc:
-        logger.error("LLM query failed: %s", exc, extra={"error": str(exc)})
-        return f"LLM error: {exc}"
+
+    last_exc: Exception | None = None
+    for attempt in range(LLM_MAX_RETRIES + 1):   # +1 because first call is attempt=0 (no delay)
+        try:
+            req = urllib.request.Request(
+                LLM_URL, data=payload, headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=LLM_TIMEOUT_SECS) as resp:
+                data = json.loads(resp.read())
+            msg = data["choices"][0]["message"]
+            content = msg.get("content", "") or ""
+            # Success — log retry history if this wasn't first attempt
+            if attempt > 0:
+                logger.warning(
+                    "LLM succeeded on retry #%d (%d attempts total)",
+                    attempt, attempt + 1,
+                    extra={"attempt": attempt, "total": attempt + 1}
+                )
+            return content
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            status = exc.code
+            if status in LLM_RETRY_ON_STATUS and attempt < LLM_MAX_RETRIES:
+                # Exponential backoff: 5s, 10s, 20s, 40s, 60s (capped)
+                delay = min(LLM_RETRY_BASE_DELAY * (2 ** attempt), LLM_RETRY_MAX_DELAY)
+                logger.warning(
+                    "LLM HTTP %d (attempt %d/%d), retrying in %.1fs "
+                    "(MiniMax model loading / server overload)",
+                    status, attempt + 1, LLM_MAX_RETRIES + 1, delay,
+                    extra={"status": status, "attempt": attempt + 1, "delay": delay}
+                )
+                time.sleep(delay)
+                continue
+            # Non-retryable HTTP error or out of retries
+            logger.error(
+                "LLM HTTP %d failed permanently after %d attempts: %s",
+                status, attempt + 1, exc,
+                extra={"status": status, "attempts": attempt + 1, "error": str(exc)}
+            )
+            return f"LLM error: {exc}"
+        except Exception as exc:
+            last_exc = exc
+            # Network-level errors are also retryable
+            if attempt < LLM_MAX_RETRIES:
+                delay = min(LLM_RETRY_BASE_DELAY * (2 ** attempt), LLM_RETRY_MAX_DELAY)
+                logger.warning(
+                    "LLM network error (attempt %d/%d), retrying in %.1fs: %s",
+                    attempt + 1, LLM_MAX_RETRIES + 1, delay, exc,
+                    extra={"attempt": attempt + 1, "delay": delay, "error": str(exc)}
+                )
+                time.sleep(delay)
+                continue
+            logger.error(
+                "LLM query failed permanently after %d attempts: %s",
+                attempt + 1, exc,
+                extra={"attempts": attempt + 1, "error": str(exc)}
+            )
+            return f"LLM error: {exc}"
+
+    # Should not reach here, but defensive fallback
+    return f"LLM error: {last_exc or 'unknown'}"
 
 
 def get_market_info(condition_id: str) -> Optional[dict]:

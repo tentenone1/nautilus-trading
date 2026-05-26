@@ -176,5 +176,22 @@ def get_fade_kelly_multiplier(
 
 
 def flip_side_for_fade(side: str) -> str:
-    """Flip a side for fading: BUY -> SELL, SELL -> BUY."""
-    return "sell" if side.lower() == "buy" else "buy"
+    """Flip a side for fading: BUY -> SELL, SELL -> BUY, BUY YES -> SELL NO, BUY NO -> SELL YES.
+    
+    Polymarket sides are compound: 'BUY YES' means buy the YES outcome (YES pays $1 if event resolves YES).
+    Fading means taking the opposite outcome: BUY YES -> SELL NO, SELL NO -> BUY YES.
+    """
+    s = side.strip().upper()
+    if s.startswith("BUY YES"):
+        return "SELL NO"
+    elif s.startswith("BUY NO"):
+        return "SELL YES"
+    elif s.startswith("SELL YES"):
+        return "BUY NO"
+    elif s.startswith("SELL NO"):
+        return "BUY YES"
+    elif s == "BUY":
+        return "SELL"
+    elif s == "SELL":
+        return "BUY"
+    return "SELL"  # Default to SELL for unknown formats (fail safe)

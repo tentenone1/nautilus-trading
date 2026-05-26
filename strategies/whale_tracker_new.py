@@ -259,11 +259,7 @@ class WhaleSignal:
     market_category: str = ""
     whale_address: str = ""  # proxy wallet address — added 2026-05-02
     edge_score: float = 0.0  # edge score from tracker analysis
-
-    # Backward compat: whale_follower.py checks signal.source
-    @property
-    def source(self):
-        return SignalSource.KNOWN_WHALE
+    source: str = "known_whale"  # Signal origin: "known_whale", "model_insider", "sybil"
 
 
 def _categorize_market(title: str) -> str:

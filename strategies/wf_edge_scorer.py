@@ -347,12 +347,15 @@ class EdgeScorer:
             return EdgeResult(
                 edge_score=round(min(fallback_edge, 0.5), 3),  # cap fallback at 0.5
                 raw_edge=fallback_edge,
-                action="fade" if is_sybil else "ignore",
-                action_confidence=0.3 if is_sybil else 0.0,
-                whale_trust=3.0 if is_sybil else 0.0,
+                # v5.6 fix: non-sybil unknowns use "copy" with conservative edge=0.20
+                # instead of "ignore". The "ignore" action killed our best BUY signal
+                # sources when they weren't in whale_classifications.json.
+                action="copy" if not is_sybil else "fade",
+                action_confidence=0.1 if not is_sybil else 0.3,
+                whale_trust=1.0 if not is_sybil else 3.0,
                 category_weight=cat_weight,
-                source="fallback_sybil" if is_sybil else "fallback",
-                should_trade=fallback_edge >= should_trade_threshold,
+                source="fallback" if not is_sybil else "fallback_sybil",
+                should_trade=fallback_edge >= (min_edge if not is_sybil else min_fallback),
                 side_flip=is_sybil,  # Fade sybil clusters by default
             )
 

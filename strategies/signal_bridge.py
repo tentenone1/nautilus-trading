@@ -126,6 +126,7 @@ class SignalBridge:
                     market_category=s.get("market_category", ""),
                     whale_address=s.get("whale_address", ""),
                     edge_score=s.get("edge_score", 0.0),
+                    source="model_insider",
                 )
                 self._s._on_signal(signal_obj)
                 processed += 1
@@ -216,6 +217,7 @@ class SignalBridge:
                     market_category=s.get("market_category", ""),
                     whale_address="",
                     edge_score=confidence * 10,
+                    source="sybil",
                 )
                 self._s._on_signal(signal_obj)
                 processed += 1

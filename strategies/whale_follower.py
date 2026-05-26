@@ -886,6 +886,7 @@ class WhaleFollower(Strategy):
         whale_name: str = None, market_title: str = "", market_category: str = "",
         whale_address: str = "", edge_score: float = 0.0, confidence: float = 0.0,
         entry_reason: str = "", is_fade: bool = False,
+        signal_source: str = "known_whale",
         _validation_signal_id: str = "", _validation_snapshot_id: str = "",
     ) -> None:
         """Delegate position entry to PositionManager."""
@@ -897,6 +898,7 @@ class WhaleFollower(Strategy):
                 market_category=market_category, whale_address=whale_address,
                 edge_score=edge_score, confidence=confidence,
                 entry_reason=entry_reason, is_fade=is_fade,
+                signal_source=signal_source,
                 _validation_signal_id=_validation_signal_id,
                 _validation_snapshot_id=_validation_snapshot_id,
             )

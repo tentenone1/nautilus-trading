@@ -320,7 +320,16 @@ class SignalHandler:
             self.log.info(f"Could not get instrument for {signal.market_title[:40]}, skipping")
             return
 
-        side = OrderSide.BUY if signal.side == "buy" else OrderSide.SELL
+        # Parse compound sides: "BUY YES", "BUY NO", "SELL YES", "SELL NO"
+        # vs simple: "BUY", "SELL". Extract the base order side only.
+        side_raw = (signal.side or "BUY").strip().upper()
+        if side_raw.startswith("BUY"):
+            base_side = OrderSide.BUY
+        elif side_raw.startswith("SELL"):
+            base_side = OrderSide.SELL
+        else:
+            base_side = OrderSide.BUY  # Unknown format — default to BUY
+        side = base_side
 
         # ── Step 8: Whale win rate lookup for Kelly sizing ──────────────────
         whale_wr = None
@@ -421,6 +430,7 @@ class SignalHandler:
             confidence=signal.confidence or 0.0,
             entry_reason=signal.reason or "",
             is_fade=is_fade,
+            signal_source=getattr(signal, 'source', 'known_whale'),
             _validation_signal_id=validation_signal_id,
             _validation_snapshot_id=snapshot_id,
         )

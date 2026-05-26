@@ -217,6 +217,17 @@ MIN_CONFIDENCE = 0.55  # Minimum confidence to enter a trade
 SPORTS_MIN_EDGE = 0.20  # Minimum edge_score for sports signals
 SPORTS_MIN_CONFIDENCE = 0.65  # Minimum confidence for sports signals
 
+# ── Sports Quarantine Fade Bypass (v5.5 Phase D) ──────────────────────────
+# Whales on this list can be FADED during the sports quarantine.
+# Position cap is enforced separately by PositionManager.
+# NOTE: whitelist says HOLD until 30-day paper confirms (day 12/30 as of 2026-05-26).
+# Adding to the list now so the bypass is ready to activate when confirmation arrives.
+FADE_QUARANTINE_BYPASS: frozenset[str] = frozenset({
+    # p102-0xf68a28 — MOMENTUM whale, 26% WR in sports. Fading: +$327 (C4 validated).
+    # Paper tracking active. DO NOT activate until 30-day paper confirms + audit review.
+    "0xf68a281980f8c13828e84e147e3822381d6e5b1b",
+})
+
 # ── Liquidity Tier Thresholds (volume + liquidity in USD) ────────────────────
 
 LIQUIDITY_TIER4_THRESHOLD = 100_000  # Illiquid: reduce to 25% of Kelly

@@ -155,6 +155,23 @@ class StateManager:
             else:
                 entry_price = raw_entry
 
+            # ── Extract actual fill price from OrderFilled event ───────────────────────
+            # event.last_px is the actual modeled fill price from paper_execution.py
+            # (includes slippage applied via _apply_slippage). This is what we
+            # wire to the DB so slippage_bps is non-zero and reflects real costs.
+            # entry_price (above) is the intended price — used for the trade record
+            # and P&L comparison; actual_fill_price is used for execution analytics.
+            _raw_actual = None
+            if hasattr(event, 'last_px') and event.last_px:
+                try:
+                    _raw_actual = event.last_px.as_double()
+                except Exception:
+                    try:
+                        _raw_actual = float(event.last_px)
+                    except Exception:
+                        pass
+            actual_fill_price = _raw_actual if (_raw_actual is not None and _raw_actual > 0) else entry_price
+
             qty = event.last_qty.as_double() if hasattr(event, 'last_qty') and event.last_qty else 125
             size_usd = qty * entry_price
 
@@ -244,19 +261,32 @@ class StateManager:
                             s._validation_context.register_fill(
                                 client_order_id=client_order_id,
                                 filled_ts=filled_ts,
-                                actual_price=float(entry_price),
+                                actual_price=float(actual_fill_price),
                                 filled_size=float(size_usd),
                             )
                         except Exception as ctx_err:
                             s.log.warning(f"Trade context fill registration failed: {ctx_err}")
 
-                    # Compute latencies
+                    # Compute slippage directly from actual_fill_price and entry_price.
+                    # BUG FIX: TradeContext.compute_slippage() was returning 0 for all trades
+                    # due to a context lookup issue (intended_entry_price=0 even when
+                    # register_submission was called). We bypass it and compute directly.
+                    # For BUY: adverse = paid MORE than intended → (actual - intended) / intended * 10000
+                    # For SELL: adverse = received LESS than intended → (intended - actual) / intended * 10000
+                    if entry_price and entry_price > 0 and actual_fill_price and actual_fill_price > 0:
+                        price_diff = actual_fill_price - entry_price
+                        if side_str == "SELL":
+                            price_diff = -price_diff
+                        slippage_bps_raw = (price_diff / entry_price) * 10000
+                        # Clamp extreme values: realistic slippage is [-500, +500] bps
+                        slippage_bps_final = max(-500.0, min(500.0, round(slippage_bps_raw, 1)))
+                    else:
+                        slippage_bps_final = 0.0
+                    slippage = {"slippage_bps": slippage_bps_final, "fill_completion_pct": 100.0}
                     latencies = {"detection_delay_ms": 0, "execution_delay_ms": 0, "fill_delay_ms": 0, "total_latency_ms": 0}
-                    slippage = {"slippage_bps": 0.0, "fill_completion_pct": 100.0}
                     if s._validation_context:
                         try:
                             latencies = s._validation_context.compute_latencies(client_order_id)
-                            slippage = s._validation_context.compute_slippage(client_order_id)
                         except Exception:
                             pass
 
@@ -271,7 +301,7 @@ class StateManager:
                             "market_title": market_title[:80],
                             "category": category,
                             "side": event.order_side.name if hasattr(event, 'order_side') else 'BUY',
-                            "actual_fill_price": float(entry_price),
+                            "actual_fill_price": float(actual_fill_price),
                             "filled_size_usd": float(size_usd),
                             "quantity": float(qty),
                             "instrument_id": str(event.instrument_id)[:80],
@@ -291,16 +321,9 @@ class StateManager:
                     s.log.debug(f"Validation: TRADE_FILLED {trade_id[:8]}... latency={latencies['total_latency_ms']}ms slippage={slippage['slippage_bps']:.1f}bps")
 
                     try:
-                        _actual_fill_price = None
-                        if s._validation_context:
-                            try:
-                                ctx_entry = s._validation_context.get_context(client_order_id)
-                                if ctx_entry:
-                                    _actual_fill_price = ctx_entry.get("actual_fill_price")
-                                    if _actual_fill_price is not None and _actual_fill_price > 0:
-                                        s.log.debug(f"[SLIPPAGE] actual_fill_price={_actual_fill_price:.4f} for {client_order_id[:16]}")
-                            except Exception:
-                                pass
+                        # actual_fill_price was already registered above; pass it directly
+                        # to avoid a redundant context lookup. The local variable is the
+                        # event.last_px value (real modeled fill price from paper_executor).
                         update_trade_latency_fields(
                             trade_id=trade_id,
                             detection_delay_ms=latencies["detection_delay_ms"],
@@ -309,7 +332,7 @@ class StateManager:
                             total_latency_ms=latencies["total_latency_ms"],
                             slippage_bps=slippage["slippage_bps"],
                             fill_completion_pct=slippage["fill_completion_pct"],
-                            actual_fill_price=_actual_fill_price,
+                            actual_fill_price=actual_fill_price,
                         )
                     except Exception as lat_err:
                         s.log.debug(f"Latency DB update failed: {lat_err}")
