@@ -53,8 +53,11 @@ CATEGORY_PERF_WEIGHT = 0.25  # 25% weight on category historical performance
 TRUST_WEIGHT = 0.25          # 25% weight on per-whale-per-category trust
 
 # ── Action multipliers ───────────────────────────────────────────────────────
-COPY_WIN_RATE_BOOST = 1.3     # Copying a profitable whale: 30% boost
-FADE_WIN_RATE_BOOST = 1.5     # Fading a losing whale: 50% boost (stronger signal)
+# v5.5 calibration: profitable whales (~70% WR) scored 0.33-0.39 — below the 0.50
+# discrimination target. Boosted multipliers so that 70% WR whales score >= 0.50.
+# Formula: calibrated = raw/(1+raw), targets: 70% WR whale => >=0.50, <30% WR => <=0.30.
+COPY_WIN_RATE_BOOST = 2.0      # Copying a profitable whale: 2x multiplier (was 1.3)
+FADE_WIN_RATE_BOOST = 2.2      # Fading a losing whale: 2.2x multiplier (stronger signal, was 1.5)
 IGNORE_MULTIPLIER = 0.0       # Ignored whales get zero edge
 
 # ── Trust score modulation ───────────────────────────────────────────────────
@@ -132,9 +135,116 @@ class EdgeScorer:
                     cat_perf = cls_data["category_performance"]
                     if isinstance(cat_perf, dict) and cat_perf:
                         self._trust_scores[name] = cat_perf
-            logger.info(f"Loaded {len(self._classifications)} whale classifications")
+            logger.info(f"Loaded {len(self._classifications)} whale classifications from JSON")
+            # Also load from whale_intelligence DB table
+            self._load_db_classifications()
         except Exception as e:
             logger.error(f"Failed to load classifications: {e}")
+
+    def _load_db_classifications(self) -> None:
+        """Load whale classifications from whale_discovery.db AND trades.db.
+
+        Uses should_copy/should_fade flags from whale_intelligence,
+        plus PnL data from trades.db to determine copy/fade/ignore.
+        Supplements the JSON classifications file.
+        """
+        db_path = self.db_path.parent / "whale_discovery.db"
+        if not db_path.exists():
+            return
+        try:
+            import sqlite3
+
+            # Step 1: Load PnL summary from trades.db
+            pnl_data = {}
+            if self.db_path.exists():
+                try:
+                    pnl_conn = sqlite3.connect(str(self.db_path), timeout=10.0)
+                    pnl_rows = pnl_conn.execute(
+                        "SELECT whale_name, COUNT(*) as trades, "
+                        "ROUND(SUM(actual_pnl), 2) as pnl, "
+                        "ROUND(AVG(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr "
+                        "FROM trades WHERE whale_name IS NOT NULL AND actual_pnl IS NOT NULL "
+                        "GROUP BY whale_name"
+                    ).fetchall()
+                    pnl_conn.close()
+                    for r in pnl_rows:
+                        pnl_data[r[0]] = {"trades": r[1], "pnl": r[2] or 0, "wr": r[3] or 0}
+                except Exception:
+                    pass
+
+            # Step 2: Load from whale_intelligence
+            conn = sqlite3.connect(str(db_path), timeout=10.0)
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT name, classification, trust_score, should_copy, should_fade, "
+                "win_rate, volume FROM whale_intelligence WHERE name IS NOT NULL"
+            ).fetchall()
+            conn.close()
+
+            added = 0
+            for row in rows:
+                name = row["name"]
+                if name in self._classifications:
+                    continue  # JSON takes priority
+
+                should_copy = bool(row["should_copy"])
+                should_fade = bool(row["should_fade"])
+                classification = row["classification"] or "unknown"
+                trust = row["trust_score"] or 5.0
+                wr = row["win_rate"] or 0.4
+                volume = row["volume"] or 0
+
+                # Get trades.db PnL data for this whale
+                td = pnl_data.get(name, {})
+                trades_count = td.get("trades", 0)
+                pnl = td.get("pnl", 0)
+                td_wr = td.get("wr", 0)
+
+                # Use trades.db WR if available (more accurate)
+                if trades_count >= 10:
+                    wr = td_wr
+
+                # Determine action: explicit flags first, then data-driven
+                if should_copy:
+                    action = "copy"
+                elif should_fade:
+                    action = "fade"
+                elif pnl > 500 and trades_count >= 20:
+                    # Whale with significant positive PnL = follow
+                    action = "copy"
+                elif pnl < -500 and trades_count >= 20:
+                    # Whale with significant negative PnL = fade
+                    action = "fade"
+                elif wr >= 0.50 and trades_count >= 10:
+                    action = "copy"
+                elif wr < 0.35 and trades_count >= 10:
+                    action = "fade"
+                elif wr >= 0.48 and pnl > 0 and trades_count >= 50:
+                    # Edge case: slightly below 50% WR but profitable (big wins)
+                    action = "copy"
+                else:
+                    action = "ignore"
+
+                self._classifications[name] = {
+                    "whale_name": name,
+                    "classification": classification,
+                    "confidence": min(1.0, trust / 10.0),
+                    "win_rate": wr,
+                    "total_trades": trades_count,
+                    "total_pnl": pnl,
+                    "avg_pnl": pnl / max(trades_count, 1),
+                    "categories": [],
+                    "category_performance": {},
+                    "signals": {},
+                    "action": action,
+                    "action_confidence": min(1.0, max(0.3, trust / 10.0)),
+                }
+                added += 1
+
+            if added:
+                logger.info(f"Loaded {added} additional whale classifications from DB")
+        except Exception as e:
+            logger.error(f"Failed to load DB classifications: {e}")
 
     def _build_category_performance(self) -> None:
         """Build category WR and PnL from trades.db."""
@@ -156,7 +266,7 @@ class EdgeScorer:
                 FROM trades
                 WHERE actual_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
-                  AND whale_name != 'autoresearch_llm'
+
                 GROUP BY category
             """).fetchall()
             conn.close()
@@ -227,17 +337,23 @@ class EdgeScorer:
             # No classifier data — use category weight as a conservative estimate
             cat_wr = cat_perf.get("win_rate", 0.4)
             cat_weight = CATEGORY_WEIGHTS.get(cat, 0.05)
-            fallback_edge = max(cat_wr * cat_weight, min_edge * 0.5)
+            # Sybil/entity cluster signals get boosted minimum (coordinated activity = signal)
+            is_sybil = "sybil" in whale_name.lower() or "entity_cluster" in whale_name.lower()
+            min_fallback = min_edge * 0.8 if is_sybil else min_edge * 0.5
+            fallback_edge = max(cat_wr * cat_weight, min_fallback)
+            # Sybil/entity clusters use min_fallback as threshold (coordinated activity = signal)
+            # Regular whales still need min_edge
+            should_trade_threshold = min_fallback if is_sybil else min_edge
             return EdgeResult(
                 edge_score=round(min(fallback_edge, 0.5), 3),  # cap fallback at 0.5
                 raw_edge=fallback_edge,
-                action="ignore",
-                action_confidence=0.0,
-                whale_trust=0.0,
+                action="fade" if is_sybil else "ignore",
+                action_confidence=0.3 if is_sybil else 0.0,
+                whale_trust=3.0 if is_sybil else 0.0,
                 category_weight=cat_weight,
-                source="fallback",
-                should_trade=fallback_edge >= min_edge,
-                side_flip=False,
+                source="fallback_sybil" if is_sybil else "fallback",
+                should_trade=fallback_edge >= should_trade_threshold,
+                side_flip=is_sybil,  # Fade sybil clusters by default
             )
 
         # ── Step 2: Compute whale action edge ─────────────────────────────
@@ -412,7 +528,7 @@ class EdgeScorer:
                 FROM trades
                 WHERE actual_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
-                  AND whale_name != 'autoresearch_llm'
+
             """).fetchall()
             conn.close()
 
@@ -532,3 +648,247 @@ if __name__ == "__main__":
     fade_signals.sort(key=lambda x: x["edge_score"], reverse=True)
     for e in fade_signals[:10]:
         print(f"  {e['whale_name']:30s} {e['category']:12s} edge={e['edge_score']:.3f} trust={e['whale_trust']:.1f} wr={e['whale_wr']:.1%}")
+
+
+# ── Phase C3: Edge Scorer Calibration ─────────────────────────────────────────
+
+def calibrate_edge_scorer(
+    db_path: Path | str | None = None,
+    output_path: Path | str | None = None,
+    min_trades_per_whale: int = 3,
+) -> dict:
+    """Calibrate edge scorer weights using historical realized_pnl data.
+
+    Loads all closed trades with realized_pnl IS NOT NULL, computes per-whale
+    aggregate stats (win rate, avg PnL, Sharpe), then checks whether the current
+    scorer produces edge scores that satisfy the discrimination target:
+
+      - Profitable whales (total PnL > 0):  edge_score >= 0.50
+      - Unprofitable whales (total PnL < 0): edge_score <= 0.30
+
+    If the current scorer fails these thresholds, the weight knobs are adjusted
+    and the recommended calibration is written to the output JSON.
+
+    Args:
+        db_path: Path to trades.db.
+        output_path: Path to write config/edge_scorer_calibration_v5.5.json.
+        min_trades_per_whale: Minimum trades required for a whale to be included.
+
+    Returns:
+        Dict with calibration results, including per-whale stats, threshold
+        checks, recommended_weight_changes, and final verdict.
+    """
+    import json as _json
+    import math as _math
+
+    _db = Path(db_path) if db_path else DB_PATH
+    _out = Path(output_path) if output_path else (
+        Path("/home/elon-1/workspace/nautilus-trading/config")
+        / "edge_scorer_calibration_v5.5.json"
+    )
+    _out.parent.mkdir(parents=True, exist_ok=True)
+
+    # ── 1. Load closed trades ─────────────────────────────────────────────────
+    conn = sqlite3.connect(str(_db))
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT whale_name, category, side, realized_pnl, exit_reason
+        FROM trades
+        WHERE realized_pnl IS NOT NULL
+          AND exit_reason IN ('resolved', 'max_hold')
+        ORDER BY whale_name, timestamp
+        """
+    ).fetchall()
+    conn.close()
+
+    # ── 2. Aggregate per-whale stats ─────────────────────────────────────────
+    whale_data: dict = {}
+    for row in rows:
+        w = (row["whale_name"] or "unknown", row["category"] or "unknown")
+        if w not in whale_data:
+            whale_data[w] = {"pnls": [], "category": row["category"] or "unknown"}
+        whale_data[w]["pnls"].append(row["realized_pnl"] or 0.0)
+
+    whale_stats = {}
+    for (wname, cat), data in whale_data.items():
+        pnls = data["pnls"]
+        n = len(pnls)
+        if n < min_trades_per_whale:
+            continue
+        total = sum(pnls)
+        wins = sum(1 for p in pnls if p > 0)
+        mean = total / n
+        variance = sum((p - mean) ** 2 for p in pnls) / max(n - 1, 1)
+        std = _math.sqrt(variance) if variance > 0 else 0.0
+        sharpe = (mean / std) * _math.sqrt(252) if std > 0 else 0.0
+        whale_stats[wname] = {
+            "category": cat,
+            "n_trades": n,
+            "total_pnl": round(total, 2),
+            "avg_pnl": round(mean, 4),
+            "win_rate": round(wins / n, 3),
+            "sharpe": round(sharpe, 4),
+            "profitable": total > 0,
+        }
+
+    # ── 3. Score each whale using the current scorer ─────────────────────────
+    scorer = EdgeScorer(db_path=_db)
+    scorer.refresh_if_stale()
+
+    profitable_above_threshold = 0
+    profitable_below_threshold = 0
+    unprofitable_below_threshold = 0
+    unprofitable_above_threshold = 0
+    calibration_needed = False
+    adjustments = []
+
+    whale_score_details = {}
+    for wname, stats in whale_stats.items():
+        result = scorer.score_signal(
+            whale_name=wname,
+            category=stats["category"],
+            raw_edge_score=0.5,
+            confidence=0.5,
+            side="BUY",
+        )
+        score = result.edge_score
+        whale_score_details[wname] = {
+            "category": stats["category"],
+            "edge_score": score,
+            "total_pnl": stats["total_pnl"],
+            "win_rate": stats["win_rate"],
+            "sharpe": stats["sharpe"],
+            "n_trades": stats["n_trades"],
+            "profitable": stats["profitable"],
+        }
+
+        if stats["profitable"]:
+            if score >= 0.50:
+                profitable_above_threshold += 1
+            else:
+                profitable_below_threshold += 1
+                calibration_needed = True
+                adjustments.append({
+                    "whale": wname,
+                    "current_score": score,
+                    "target": ">= 0.50",
+                    "reason": f"profitable whale ({stats['category']}) scored below 0.50",
+                })
+        else:
+            if score <= 0.30:
+                unprofitable_below_threshold += 1
+            else:
+                unprofitable_above_threshold += 1
+                calibration_needed = True
+                adjustments.append({
+                    "whale": wname,
+                    "current_score": score,
+                    "target": "<= 0.30",
+                    "reason": f"unprofitable whale ({stats['category']}) scored above 0.30",
+                })
+
+    # ── 4. Compute recommended weight changes ─────────────────────────────────
+    total_profitable = profitable_above_threshold + profitable_below_threshold
+    total_unprofitable = unprofitable_below_threshold + unprofitable_above_threshold
+
+    # Check if weights need bumping up/down
+    current_weights = {
+        "WHALE_ACTION_WEIGHT": WHALE_ACTION_WEIGHT,
+        "CATEGORY_PERF_WEIGHT": CATEGORY_PERF_WEIGHT,
+        "TRUST_WEIGHT": TRUST_WEIGHT,
+        "COPY_WIN_RATE_BOOST": COPY_WIN_RATE_BOOST,
+        "FADE_WIN_RATE_BOOST": FADE_WIN_RATE_BOOST,
+        "TRUST_HIGH_BOOST": TRUST_HIGH_BOOST,
+        "TRUST_LOW_SUPPRESS": TRUST_LOW_SUPPRESS,
+    }
+
+    # Simple heuristic: if profitable whales are under-scored, boost the
+    # action and win-rate weights; if unprofitable whales are over-scored,
+    # suppress the action weight and boost fade WR multiplier.
+    recommended = dict(current_weights)
+    if calibration_needed:
+        if profitable_below_threshold > 0:
+            # Profitable whales scored too low → boost whale action weight
+            delta = min(0.05 * profitable_below_threshold, 0.15)
+            recommended["WHALE_ACTION_WEIGHT"] = round(
+                min(recommended["WHALE_ACTION_WEIGHT"] + delta, 0.70), 2
+            )
+            recommended["COPY_WIN_RATE_BOOST"] = round(
+                min(recommended["COPY_WIN_RATE_BOOST"] + 0.05, 1.6), 2
+            )
+        if unprofitable_above_threshold > 0:
+            # Unprofitable whales scored too high → suppress action weight
+            delta = min(0.05 * unprofitable_above_threshold, 0.15)
+            recommended["WHALE_ACTION_WEIGHT"] = round(
+                max(recommended["WHALE_ACTION_WEIGHT"] - delta, 0.30), 2
+            )
+            recommended["FADE_WIN_RATE_BOOST"] = round(
+                min(recommended["FADE_WIN_RATE_BOOST"] + 0.05, 1.8), 2
+            )
+
+    verdict = "PASS" if not calibration_needed else "ADJUST_RECOMMENDED"
+    if not calibration_needed:
+        verdict = "PASS"
+    elif total_profitable > 0 and profitable_below_threshold / total_profitable < 0.2:
+        verdict = "MARGINAL"
+    else:
+        verdict = "ADJUST_RECOMMENDED"
+
+    result = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "config_version": "v5.5",
+        "verdict": verdict,
+        "n_whales_calibrated": len(whale_stats),
+        "n_adjustments": len(adjustments),
+        "threshold_summary": {
+            "profitable_above_0.50": profitable_above_threshold,
+            "profitable_below_0.50": profitable_below_threshold,
+            "unprofitable_below_0.30": unprofitable_below_threshold,
+            "unprofitable_above_0.30": unprofitable_above_threshold,
+        },
+        "current_weights": current_weights,
+        "recommended_weights": recommended if calibration_needed else current_weights,
+        "weight_changes": (
+            {k: v for k, v in recommended.items() if v != current_weights.get(k)}
+        ) if calibration_needed else {},
+        "adjustments": adjustments,
+        "whale_scores": whale_score_details,
+    }
+
+    # ── 5. Write output ──────────────────────────────────────────────────────
+    _out.parent.mkdir(parents=True, exist_ok=True)
+    with open(_out, "w") as f:
+        _json.dump(result, f, indent=2)
+    logger.info("Edge scorer calibration written to %s", _out)
+
+    # ── 6. Console summary ───────────────────────────────────────────────────
+    print("\n" + "=" * 60)
+    print("PHASE C3: EDGE SCORER CALIBRATION  (v5.5)")
+    print("=" * 60)
+    print(f"  Verdict:            {verdict}")
+    print(f"  Whales calibrated:  {len(whale_stats)}")
+    print(f"  Adjustments needed: {len(adjustments)}")
+    print()
+    print(f"  Threshold check:")
+    print(f"    Profitable whales scoring >= 0.50: {profitable_above_threshold}/{total_profitable}")
+    print(f"    Profitable whales scoring <  0.50: {profitable_below_threshold}/{total_profitable}")
+    print(f"    Unprofitable whales scoring <= 0.30: {unprofitable_below_threshold}/{total_unprofitable}")
+    print(f"    Unprofitable whales scoring >  0.30: {unprofitable_above_threshold}/{total_unprofitable}")
+    if adjustments:
+        print(f"\n  Adjustments ({len(adjustments)}):")
+        for adj in adjustments[:5]:
+            print(f"    {adj['whale']:25s} score={adj['current_score']:.3f} "
+                  f"target={adj['target']} — {adj['reason']}")
+    if calibration_needed:
+        print(f"\n  Recommended weight changes:")
+        for k, v in result["weight_changes"].items():
+            print(f"    {k}: {current_weights[k]} -> {v}")
+    print(f"\n  Saved: {_out}")
+    print()
+
+    return result
+
+
+if __name__ == "__main__":
+    calibrate_edge_scorer()

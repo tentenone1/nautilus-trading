@@ -300,6 +300,18 @@ class WhaleIntelligence:
             return intel
         return None
 
+
+    def apply_size_modifier(self, whale_name: str, base_size: float, category: str = "") -> tuple[float, str]:
+        """Adjust position size based on whale trust score."""
+        intel = self._intel.get(whale_name)
+        if not intel:
+            return base_size, "no_intel_data"
+        trust = intel.get("trust_score", 5.0)
+        trust_mult = max(0.25, min(2.0, trust / 5.0))
+        new_size = round(base_size * trust_mult, 2)
+        note = f"trust={trust:.1f} mult={trust_mult:.2f}" if abs(trust_mult - 1.0) > 0.05 else ""
+        return new_size, note
+
     def get_follow_list(self, min_trust: float = 5.0, min_volume: float = 1000.0) -> list[dict]:
         """Get dynamic whale following list based on intelligence data.
 

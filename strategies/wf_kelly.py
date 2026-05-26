@@ -28,6 +28,7 @@ def kelly_size(
     market_category: str = "",
     max_single_position_pct: float = 0.02,  # hard cap (same as check_position_limits)
     whale_tiering=None,
+    is_fade: bool = False,
 ) -> float:
     """Kelly criterion position sizing with edge_score calibration.
 
@@ -65,7 +66,15 @@ def kelly_size(
         if available_balance is not None
         else bankroll
     )
-    p = whale_win_rate if whale_win_rate else 0.55
+    # Fade: invert whale WR, but clamp to sane range
+    if is_fade and whale_win_rate:
+        p = 1.0 - whale_win_rate
+        p = max(p, 0.55)   # Floor: at least 55% effective WR for fades
+        p = min(p, 0.85)   # Cap: never assume >85% for fades (avoids overbetting on 0% WR whales)
+    elif whale_win_rate:
+        p = whale_win_rate
+    else:
+        p = 0.55  # default assumption
     q = 1 - p
     b = (1 - price) / price
 

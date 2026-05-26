@@ -596,6 +596,72 @@ def get_market_exposure(
     return exposure
 
 
+def check_correlation_gate(
+    s,
+    inst_key: str,
+    market_title: str,
+) -> tuple[bool, str]:
+    """Reject if ≥MAX_CORRELATED_POSITIONS open positions share a keyword cluster.
+
+    Keyword clusters are content words (≥3 chars, excluding common stop words)
+    extracted from market_title.  If the candidate shares any cluster word with
+    that many existing open positions, it is rejected to prevent single-event
+    cluster blowups (e.g. 5 Iran positions wiped out by one news event).
+    """
+    from strategies.wf_constants import MAX_CORRELATED_POSITIONS
+
+    if not market_title:
+        return True, ""
+
+    stop_words = {
+        "the", "a", "an", "of", "in", "on", "at", "to", "for", "with",
+        "by", "from", "is", "will", "be", "that", "this", "it", "and",
+        "or", "are", "was", "as", "if", "than", "when", "where", "how",
+        "what", "who", "which", "after", "before", "during", "about",
+        "into", "over", "under", "between", "through", "within",
+        "yes", "no", "whether", "either", "both", "each", "such",
+        "more", "most", "some", "any", "all", "but", "not", "only",
+        "just", "then", "there", "here", "now", "so", "very",
+    }
+
+    def _clusters(title: str) -> set[str]:
+        return {
+            w.strip(".,!?;:()[]{}\"'")
+            for w in title.lower().split()
+            if len(w) >= 3
+            and w.strip(".,!?;:()[]{}\"'") not in stop_words
+        }
+
+    candidate_clusters = _clusters(market_title)
+    if not candidate_clusters:
+        return True, ""
+
+    open_pos = getattr(s, "_open_positions", {}) or {}
+    if not open_pos:
+        return True, ""
+
+    # Count how many open positions share ≥1 cluster word with the candidate
+    matching = 0
+    hit_cluster: str | None = None
+    for pos in open_pos.values():
+        pos_title = (pos.get("market_title") or "").lower()
+        pos_clusters = _clusters(pos_title)
+        if candidate_clusters & pos_clusters:
+            matching += 1
+            if hit_cluster is None:
+                # Capture one overlapping cluster for the rejection reason
+                hit_cluster = next(iter(candidate_clusters & pos_clusters))
+        if matching >= MAX_CORRELATED_POSITIONS:
+            s.log.info(
+                f"PIPELINE_REJECT | correlation_gate | "
+                f"cluster={hit_cluster!r} | matching={matching} >= {MAX_CORRELATED_POSITIONS} | "
+                f"title={market_title[:60]!r}"
+            )
+            return False, f"correlation_cluster:{hit_cluster}"
+
+    return True, ""
+
+
 def check_position_limits(
     *,
     config,

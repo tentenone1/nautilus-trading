@@ -204,5 +204,5 @@ def modulate(signal) -> SybilModulation:
         sybil_ratio=ratio,
         sybil_wallets=wallets,
         sybil_exposure=exposure,
-        decision=f"weak_yes={sybil_ratio:.0%}_wallets={wallets}",
+        decision=f"weak_yes={ratio:.0%}_wallets={wallets}",
     )

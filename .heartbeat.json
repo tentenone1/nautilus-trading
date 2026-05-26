@@ -1,1 +1,10 @@
-{"ts": "2026-05-13T05:03:49.326513Z", "pid": 1697367}
+{
+    "timestamp": "2026-05-26T04:50:01Z",
+    "status": "critical",
+    "service": "unknown",
+    "recent_trades_1h": "1",
+    "total_trades_24h": "38",
+    "log_age_seconds": "3",
+    "error_count": "2",
+    "alerts": "service_down"
+}

@@ -375,8 +375,9 @@ class WhaleFollower(Strategy):
         self._whale_intel: WhaleIntelligence | None = None
         # Fade tracking
         self._fade_positions: set[str] = set()  # Track active fade positions for concurrency limiting
-        self._fade_max_concurrent: int = 3  # Max concurrent fade trades
+        self._fade_max_concurrent: int = 6  # v5.1: raised from 3 to 6 — sybil fades were hitting cap  # Max concurrent fade trades
         self._sybil_price_cache: dict[str, tuple[float, float]] = {}  # condition_id -> (midpoint, timestamp)
+        self._last_whale_type: str = ""  # Whale classification for DB logging
 
         # ── Signal Pipeline + Risk Manager (decomposed from inline logic) ──
         self._pipeline: SignalPipeline | None = None  # Initialized in on_start
@@ -448,7 +449,7 @@ class WhaleFollower(Strategy):
             whale_tiering=self._whale_tiering,
             whale_intel=self._whale_intel,
             min_confidence=self.config.min_confidence,
-            min_edge=0.15,
+            min_edge=0.10,
             auto_trade=self.config.auto_trade,
             daily_loss_breached=self._daily_loss_breached,
         )
@@ -1126,7 +1127,7 @@ class WhaleFollower(Strategy):
             log_func=self.log.info,
         )
 
-    def _kelly_size(self, price: float, whale_win_rate: float | None = None, edge_score: float = 0.0, available_balance: float | None = None, market_category: str = '') -> float:
+    def _kelly_size(self, price: float, whale_win_rate: float | None = None, edge_score: float = 0.0, available_balance: float | None = None, market_category: str = '', is_fade: bool = False) -> float:
         from strategies.wf_kelly import kelly_size
         # ── Phase 4: Per-category params from strategy ──────────────────
         strategy = self._strategies.get(market_category.lower())
@@ -1149,6 +1150,7 @@ class WhaleFollower(Strategy):
             market_category=market_category,
             max_single_position_pct=max_single_pct,
             whale_tiering=self._whale_tiering,
+            is_fade=is_fade,
         )
 
 

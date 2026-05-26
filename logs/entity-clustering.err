@@ -92,3 +92,28 @@ Entity clustering: 15 whales → /home/elon-1/workspace/nautilus-trading/researc
 2026-05-11 11:00:01 [INFO] PIPELINE COMPLETE
 2026-05-11 11:00:01 [INFO] Matches: 0 | Profiles enriched: /home/elon-1/workspace/nautilus-trading/research/whale_profiles.json
 2026-05-11 11:00:01 [INFO] ============================================================
+2026-05-26 11:00:00 [INFO] ============================================================
+2026-05-26 11:00:00 [INFO] MANIPULATION COUNTER-STRATEGY PIPELINE STARTING
+2026-05-26 11:00:00 [INFO] ============================================================
+2026-05-26 11:00:00 [INFO] Step 1: Running entity clustering...
+2026-05-26 11:00:00 [INFO] Entity clustering completed successfully
+2026-05-26 11:00:00 [INFO] c7ac... (score=1)
+    Countryside, JewishNinja... (score=0)
+    anoin123, downtownfee... (score=0)
+    autoresearch_llm, p102-0xf68a28, p26-0x1117ea, p32-0xe72bb5... (score=0)
+  Sybil groups: 3
+    0x14026373da58fabe45e2bf73a915a5d4b3a6e35b, 0xdb250854cb0A4C1784fE2D1179f5c3C4577fEb12-1778517347042, Hehaj648jeh... (735 trades)
+    0x5234c8687FbC415e8c255b3a90AFa8CF47de4c4F-1777743586273, p184-0x0e64bd, p51-0x31864f... (79 trades)
+    autoresearch_llm, p102-0xf68a28, p26-0x1117ea... (1078 trades)
+
+2026-05-26 11:00:00 [INFO] Step 2-4: Matching patterns and enriching profiles...
+2026-05-26 11:00:01 [INFO] Loaded 11 tactics from playbook
+2026-05-26 11:00:01 [INFO] Loaded 7 clusters
+2026-05-26 11:00:01 [INFO] Loaded 678 profiles
+2026-05-26 11:00:01 [INFO] Saved /home/elon-1/workspace/nautilus-trading/research/whale_profiles.json
+2026-05-26 11:00:01 [INFO] Step 5: Writing audit log...
+2026-05-26 11:00:01 [INFO] Audit log written to /home/elon-1/workspace/nautilus-trading/research/manipulation_audit.log
+2026-05-26 11:00:01 [INFO] ============================================================
+2026-05-26 11:00:01 [INFO] PIPELINE COMPLETE
+2026-05-26 11:00:01 [INFO] Matches: 0 | Profiles enriched: /home/elon-1/workspace/nautilus-trading/research/whale_profiles.json
+2026-05-26 11:00:01 [INFO] ============================================================

@@ -36,7 +36,7 @@ from strategies.wf_constants import (
     CERTAINTY_LOSS_THRESHOLD,
     SPORTS_WHITELIST_PATTERNS,
 )
-from strategies.wf_position_checks import check_position_limits, trigger_kill_switch
+from strategies.wf_position_checks import check_position_limits, check_correlation_gate, trigger_kill_switch
 from strategies.wf_position_persistence import save_open_positions, load_daily_state, save_daily_state
 
 # Validation integration (graceful degradation)
@@ -199,14 +199,16 @@ class PositionManager:
 
         # Sports market defense-in-depth: block whale-following positions in sports.
         # Whales have 28% WR in sports; autoresearch handles sports markets.
-        combined = f"{market_title}|{market_category}".lower()
-        if any(p in combined for p in (
-            'nba', 'nfl', 'mlb', 'nhl', 'ncaaf', 'ncaab', 'ufc', 'boxing',
-            'tennis', 'soccer', 'football', 'basketball', 'baseball', 'hockey',
-            'sports', 'game ', 'championship', 'finals', 'playoffs', 'season',
-        )):
-            s.log.warning(f"SPORTS_POSITION_BLOCK: rejecting whale-following position in sports market | {market_title[:50]}")
-            return
+        # FADE signals bypass — fading losing whales in sports is valid.
+        if not is_fade:
+            combined = f"{market_title}|{market_category}".lower()
+            if any(p in combined for p in (
+                'nba', 'nfl', 'mlb', 'nhl', 'ncaaf', 'ncaab', 'ufc', 'boxing',
+                'tennis', 'soccer', 'football', 'basketball', 'baseball', 'hockey',
+                'sports', 'game ', 'championship', 'finals', 'playoffs', 'season',
+            )):
+                s.log.warning(f"SPORTS_POSITION_BLOCK: rejecting whale-following position in sports market | {market_title[:50]}")
+                return
 
         open_positions = s.cache.positions_open(instrument_id=inst_id)
         if open_positions and open_positions[0].quantity.as_double() != 0:
@@ -235,7 +237,7 @@ class PositionManager:
         available = account.balance_free(USDC_e).as_double()
 
         # Kelly sizing
-        size_usd = s._kelly_size(price, whale_win_rate=whale_win_rate, edge_score=edge_score, available_balance=available, market_category=market_category)
+        size_usd = s._kelly_size(price, whale_win_rate=whale_win_rate, edge_score=edge_score, available_balance=available, market_category=market_category, is_fade=is_fade)
         if size_usd <= 0:
             wr_note = f" (whale_wr={whale_win_rate:.0%})" if whale_win_rate else " (fixed_wr=55%)"
             s.log.info(f"No Kelly edge{wr_note}, skipping")
@@ -291,6 +293,95 @@ class PositionManager:
             )
             s._kill_switch_breached = True
             s._kill_switch_time = time.time()
+            return
+
+        # ── Phase B3: 48h P&L Gate ─────────────────────────────────────────────
+        # Block new entries if cumulative realized P&L over the last 48 hours is negative.
+        # This prevents chasing into a losing streak. Only checks once per call (cached in
+        # _check_48h_pnl_result with a 60-second TTL to avoid excessive DB queries).
+        if not hasattr(s, "_48h_pnl_cache") or not hasattr(s._48h_pnl_cache, "ts"):
+            s._48h_pnl_cache = {"ts": 0, "pnl": None, "allowed": None}
+        now = time.time()
+        if now - s._48h_pnl_cache["ts"] > 60:
+            import sqlite3 as _sqlite3
+            _DB = Path("/home/elon-1/workspace/nautilus-trading/data/trades.db")
+            try:
+                conn = _sqlite3.connect(str(_DB))
+                conn.execute("PRAGMA busy_timeout=5000")
+                row48 = conn.execute(
+                    "SELECT COALESCE(SUM(realized_pnl), 0.0) FROM trades WHERE "
+                    "exit_time > datetime('now', '-48 hours') AND realized_pnl IS NOT NULL"
+                ).fetchone()
+                conn.close()
+                pnl_48h = float(row48[0]) if row48 else 0.0
+                # ── Config version mismatch check ─────────────────────────────────
+                # If the most recent closed trade has a different config_version,
+                # something changed since that trade was recorded — block to avoid
+                # running stale logic against current market conditions.
+                from strategies.wf_constants import ACTIVE_CONFIG_VERSION
+                try:
+                    _conn2 = _sqlite3.connect(str(_DB))
+                    _row_ver = _conn2.execute(
+                        "SELECT config_version FROM trades "
+                        "WHERE exit_time IS NOT NULL AND config_version IS NOT NULL AND config_version != '' "
+                        "ORDER BY exit_time DESC LIMIT 1"
+                    ).fetchone()
+                    _conn2.close()
+                    _recent_cv = _row_ver[0] if _row_ver else ACTIVE_CONFIG_VERSION
+                    _cv_match = _recent_cv == ACTIVE_CONFIG_VERSION
+                except Exception:
+                    _cv_match = True  # fail open on DB error
+                if not _cv_match:
+                    s.log.warning(
+                        f"PIPELINE_REJECT | config_version_gate | "
+                        f"recent={_recent_cv!r} != current={ACTIVE_CONFIG_VERSION!r} | "
+                        f"blocking until P&L recovers"
+                    )
+                    if capital_requested and strategy is not None:
+                        strategy.release_capital(0.0, size_usd, is_fade=is_fade)
+                    trigger_kill_switch(
+                        config=s.config, cache=s.cache, log=s.log,
+                        reason=f"config_version_gate: recent={_recent_cv!r} != current={ACTIVE_CONFIG_VERSION!r}",
+                        run_id=s._validation_run_id, mode=get_current_mode(),
+                        strategy_id="whale_follower", cancel_orders_func=s.cancel_all_open_orders,
+                    )
+                    s._kill_switch_breached = True
+                    s._kill_switch_time = time.time()
+                    return
+            except Exception as _e:
+                s.log.warning(f"48h P&L query failed: {_e}, allowing by default")
+                pnl_48h = 0.0
+            s._48h_pnl_cache = {"ts": now, "pnl": pnl_48h, "allowed": pnl_48h >= 0}
+
+        if not s._48h_pnl_cache["allowed"]:
+            pnl_48h = s._48h_pnl_cache["pnl"]
+            s.log.info(
+                f"PIPELINE_REJECT | 48h_pnl_gate | pnl_48h=${pnl_48h:+.2f} < $0.00 | "
+                f"blocking new entries until P&L recovers"
+            )
+            if capital_requested and strategy is not None:
+                strategy.release_capital(0.0, size_usd, is_fade=is_fade)
+            trigger_kill_switch(
+                config=s.config, cache=s.cache, log=s.log,
+                reason=f"48h_pnl_gate: pnl_48h=${pnl_48h:+.2f} < $0",
+                run_id=s._validation_run_id, mode=get_current_mode(),
+                strategy_id="whale_follower", cancel_orders_func=s.cancel_all_open_orders,
+            )
+            s._kill_switch_breached = True
+            s._kill_switch_time = time.time()
+            return
+
+        # ── Phase B4: Correlation Gate ──────────────────────────────────────────
+        # Block if ≥MAX_CORRELATED_POSITIONS open positions share a keyword cluster
+        # with this candidate (prevents single-event cluster blowups like Iran).
+        corr_allowed, corr_reason = check_correlation_gate(s, inst_key, market_title)
+        if not corr_allowed:
+            if capital_requested and strategy is not None:
+                strategy.release_capital(0.0, size_usd, is_fade=is_fade)
+            s.log.info(
+                f"PIPELINE_REJECT | correlation_gate | {corr_reason} | "
+                f"title={market_title[:60]!r}"
+            )
             return
 
         if strategy is None:

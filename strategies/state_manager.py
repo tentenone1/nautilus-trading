@@ -24,9 +24,11 @@ from nautilus_trader.model.identifiers import InstrumentId, Venue
 
 from strategies.wf_constants import (
     LIVE_ENTRY_PRICE_CAPS,
+    ACTIVE_CONFIG_VERSION,
 )
 from strategies.wf_position_persistence import save_open_positions, save_daily_state, load_daily_state
 from strategies.wf_db_ops import log_trade_to_db, update_trade_latency_fields
+import json
 
 # Validation integration (graceful degradation)
 try:
@@ -212,7 +214,6 @@ class StateManager:
 
             # Log to DB
             log_trade_to_db(
-                conn=conn,
                 trade_id=trade_id,
                 whale_name=whale_name,
                 whale_address=whale_address,
@@ -221,14 +222,15 @@ class StateManager:
                 condition_id=cond_id,
                 side=side_str,
                 entry_price=entry_price,
-                size_usd=size_usd,
+                position_size_usd=size_usd,
                 kelly_fraction=kelly_fraction,
                 confidence=confidence,
                 edge_score=edge_score,
                 signal_source=signal_source,
                 entry_reason=entry_reason,
                 instrument_id=inst_key,
-                token_id=inst_key,
+                config_version=ACTIVE_CONFIG_VERSION,
+                whale_type=getattr(s, '_last_whale_type', ''),
             )
 
             # Validation events
@@ -241,10 +243,9 @@ class StateManager:
                         try:
                             s._validation_context.register_fill(
                                 client_order_id=client_order_id,
-                                signal_id=validation_signal_id,
                                 filled_ts=filled_ts,
-                                actual_fill_price=float(entry_price),
-                                filled_size_usd=float(size_usd),
+                                actual_price=float(entry_price),
+                                filled_size=float(size_usd),
                             )
                         except Exception as ctx_err:
                             s.log.warning(f"Trade context fill registration failed: {ctx_err}")
@@ -290,6 +291,16 @@ class StateManager:
                     s.log.debug(f"Validation: TRADE_FILLED {trade_id[:8]}... latency={latencies['total_latency_ms']}ms slippage={slippage['slippage_bps']:.1f}bps")
 
                     try:
+                        _actual_fill_price = None
+                        if s._validation_context:
+                            try:
+                                ctx_entry = s._validation_context.get_context(client_order_id)
+                                if ctx_entry:
+                                    _actual_fill_price = ctx_entry.get("actual_fill_price")
+                                    if _actual_fill_price is not None and _actual_fill_price > 0:
+                                        s.log.debug(f"[SLIPPAGE] actual_fill_price={_actual_fill_price:.4f} for {client_order_id[:16]}")
+                            except Exception:
+                                pass
                         update_trade_latency_fields(
                             trade_id=trade_id,
                             detection_delay_ms=latencies["detection_delay_ms"],
@@ -298,6 +309,7 @@ class StateManager:
                             total_latency_ms=latencies["total_latency_ms"],
                             slippage_bps=slippage["slippage_bps"],
                             fill_completion_pct=slippage["fill_completion_pct"],
+                            actual_fill_price=_actual_fill_price,
                         )
                     except Exception as lat_err:
                         s.log.debug(f"Latency DB update failed: {lat_err}")

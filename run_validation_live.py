@@ -100,6 +100,7 @@ def load_dotenv(path: str = None) -> None:
 
 load_dotenv()
 
+
 # ── Load top whale markets ──────────────────────────────────────────────
 def load_top_whale_markets(limit: int = 10) -> list[dict]:
     """Fetch top whale markets from discovery DB + Polymarket positions API.

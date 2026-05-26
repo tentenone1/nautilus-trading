@@ -16,8 +16,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-FADE_WR_THRESHOLD: float = 0.2
-FADE_MIN_TRADES: int = 3
+# Fade thresholds — Phase A3 alignment:
+# Fade eligible only when whale has statistically significant losing record:
+#   >=10 trades in that category AND win rate <25%
+# (supersedes legacy constants used by is_fade_whale_dynamic)
+FADE_WR_THRESHOLD: float = 0.25   # <25% WR to qualify
+FADE_MIN_TRADES: int = 10          # >=10 trades in category before fade is allowed
 FADE_CONFIDENCE_MIN: float = 0.8
 FADE_KELLY_MULTIPLIER: float = 1.5
 

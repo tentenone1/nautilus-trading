@@ -1,0 +1,1028 @@
+{
+  "generated_at": "2026-05-26T04:30:49.097021+00:00",
+  "calibration_version": "v5.5",
+  "min_trades_per_whale": 3,
+  "source_db": "/home/elon-1/workspace/nautilus-trading/data/trades.db",
+  "n_trades_analyzed": 2709,
+  "n_whales_analyzed": 119,
+  "current_weights": {
+    "CATEGORY_WEIGHTS": {
+      "general": 0.65,
+      "sports": 0.3,
+      "crypto": 0.15,
+      "geopolitics": 0.1,
+      "entertainment": 0.0,
+      "finance": 0.0,
+      "unknown": 0.05
+    },
+    "WHALE_ACTION_WEIGHT": 0.5,
+    "CATEGORY_PERF_WEIGHT": 0.25,
+    "TRUST_WEIGHT": 0.25,
+    "COPY_WIN_RATE_BOOST": 1.3,
+    "FADE_WIN_RATE_BOOST": 1.5
+  },
+  "discrimination_targets": {
+    "profitable_whales_min_score": 0.5,
+    "unprofitable_whales_max_score": 0.3
+  },
+  "recommendations": [
+    {
+      "category": "crypto",
+      "issues": [
+        "profitable=0.378<0.50"
+      ]
+    },
+    {
+      "category": "general",
+      "issues": [
+        "profitable=0.394<0.50"
+      ]
+    },
+    {
+      "category": "geopolitics",
+      "issues": [
+        "profitable=0.298<0.50"
+      ]
+    },
+    {
+      "category": "politics",
+      "issues": [
+        "profitable=0.279<0.50"
+      ]
+    },
+    {
+      "category": "sports",
+      "issues": [
+        "profitable=0.332<0.50"
+      ]
+    }
+  ],
+  "adjustments": {
+    "aggregate_conviction": "OK",
+    "concentrated_follow": "OK",
+    "crypto": "ADJUST_WEIGHTS",
+    "economics": "OK",
+    "general": "ADJUST_WEIGHTS",
+    "geopolitics": "ADJUST_WEIGHTS",
+    "politics": "ADJUST_WEIGHTS",
+    "sports": "ADJUST_WEIGHTS",
+    "sybil": "OK",
+    "sybil_coordination": "OK",
+    "sybil_signal": "OK",
+    "whale_follow": "OK"
+  },
+  "whale_stats": {
+    "00xx00xx00::sports": {
+      "n_trades": 11,
+      "total_pnl": 0.07,
+      "avg_pnl": 0.01,
+      "win_rate": 0.3636,
+      "sharpe": 0.0144,
+      "is_profitable": true
+    },
+    "0x14026373da58fabe45e2bf73a915a5d4b3a6e35b::crypto": {
+      "n_trades": 208,
+      "total_pnl": -196.51,
+      "avg_pnl": -0.94,
+      "win_rate": 0.4135,
+      "sharpe": -5.0055,
+      "is_profitable": false
+    },
+    "0x2a2C53bD278c04DA9962Fcf96490E17F3DfB9B::sports": {
+      "n_trades": 5,
+      "total_pnl": -281.56,
+      "avg_pnl": -56.31,
+      "win_rate": 0.2,
+      "sharpe": -1.7677,
+      "is_profitable": false
+    },
+    "0x3DFb153c197D4C19D3B31c1ecD2c7B6860eeabAf-1722957908185::sports": {
+      "n_trades": 3,
+      "total_pnl": -4.6,
+      "avg_pnl": -1.53,
+      "win_rate": 0.6667,
+      "sharpe": -1.1163,
+      "is_profitable": false
+    },
+    "0x5234c8687FbC415e8c255b3a90AFa8CF47de4c4F-1777743586273::sports": {
+      "n_trades": 15,
+      "total_pnl": -2.39,
+      "avg_pnl": -0.16,
+      "win_rate": 0.2667,
+      "sharpe": -0.2796,
+      "is_profitable": false
+    },
+    "0x89cd944aa9cf528142e3557099c6992eb7ce4d7d::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "0xa0f21e6d351baa9185716b5c00c2925ed9621848::sports": {
+      "n_trades": 4,
+      "total_pnl": 19.39,
+      "avg_pnl": 4.85,
+      "win_rate": 1.0,
+      "sharpe": 2.066,
+      "is_profitable": true
+    },
+    "0xdb250854cb0A4C1784fE2D1179f5c3C4577fEb12-1778517347042::sports": {
+      "n_trades": 197,
+      "total_pnl": 81.73,
+      "avg_pnl": 0.41,
+      "win_rate": 0.3959,
+      "sharpe": 2.0853,
+      "is_profitable": true
+    },
+    "Arbguy::geopolitics": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "Arbguy::politics": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "Bagwell306::sports": {
+      "n_trades": 9,
+      "total_pnl": -2.19,
+      "avg_pnl": -0.24,
+      "win_rate": 0.3333,
+      "sharpe": -0.6121,
+      "is_profitable": false
+    },
+    "COMEONDUDE::sports": {
+      "n_trades": 10,
+      "total_pnl": -43.28,
+      "avg_pnl": -4.33,
+      "win_rate": 0.0,
+      "sharpe": -98.4965,
+      "is_profitable": false
+    },
+    "Cdrael2L::sports": {
+      "n_trades": 4,
+      "total_pnl": 0.44,
+      "avg_pnl": 0.11,
+      "win_rate": 0.25,
+      "sharpe": 1.1547,
+      "is_profitable": true
+    },
+    "Countryside::crypto": {
+      "n_trades": 5,
+      "total_pnl": 379.38,
+      "avg_pnl": 75.88,
+      "win_rate": 0.4,
+      "sharpe": 0.3915,
+      "is_profitable": true
+    },
+    "Countryside::sports": {
+      "n_trades": 4,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "EB99999::general": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "Erasmus.::geopolitics": {
+      "n_trades": 3,
+      "total_pnl": -3.15,
+      "avg_pnl": -1.05,
+      "win_rate": 0.0,
+      "sharpe": -2.4495,
+      "is_profitable": false
+    },
+    "Feromont::sports": {
+      "n_trades": 9,
+      "total_pnl": -5.78,
+      "avg_pnl": -0.64,
+      "win_rate": 0.0,
+      "sharpe": -6.013,
+      "is_profitable": false
+    },
+    "Ferwhere::politics": {
+      "n_trades": 3,
+      "total_pnl": -67.47,
+      "avg_pnl": -22.49,
+      "win_rate": 0.0,
+      "sharpe": -1.2247,
+      "is_profitable": false
+    },
+    "Ferwhere::geopolitics": {
+      "n_trades": 4,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "Ferwhere::sports": {
+      "n_trades": 6,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "FullPicks1::sports": {
+      "n_trades": 4,
+      "total_pnl": 12.93,
+      "avg_pnl": 3.23,
+      "win_rate": 0.5,
+      "sharpe": 1.8801,
+      "is_profitable": true
+    },
+    "Hehaj648jeh::crypto": {
+      "n_trades": 260,
+      "total_pnl": -196.93,
+      "avg_pnl": -0.76,
+      "win_rate": 0.3654,
+      "sharpe": -4.7722,
+      "is_profitable": false
+    },
+    "How.Dare.You::economics": {
+      "n_trades": 4,
+      "total_pnl": -291.11,
+      "avg_pnl": -72.78,
+      "win_rate": 0.0,
+      "sharpe": -3.4123,
+      "is_profitable": false
+    },
+    "JewishNinja::sports": {
+      "n_trades": 23,
+      "total_pnl": -76.98,
+      "avg_pnl": -3.35,
+      "win_rate": 0.0,
+      "sharpe": -6.9188,
+      "is_profitable": false
+    },
+    "JewishNinja::general": {
+      "n_trades": 4,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "JewishNinja::crypto": {
+      "n_trades": 7,
+      "total_pnl": 1132.84,
+      "avg_pnl": 161.83,
+      "win_rate": 0.7143,
+      "sharpe": 1.622,
+      "is_profitable": true
+    },
+    "Logan.::politics": {
+      "n_trades": 9,
+      "total_pnl": 0.1,
+      "avg_pnl": 0.01,
+      "win_rate": 0.1111,
+      "sharpe": 1.0607,
+      "is_profitable": true
+    },
+    "Logan.::general": {
+      "n_trades": 6,
+      "total_pnl": -4.45,
+      "avg_pnl": -0.74,
+      "win_rate": 0.0,
+      "sharpe": -1.0954,
+      "is_profitable": false
+    },
+    "Logan.::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.88,
+      "avg_pnl": 0.29,
+      "win_rate": 0.3333,
+      "sharpe": 1.2247,
+      "is_profitable": true
+    },
+    "NonceChaser::politics": {
+      "n_trades": 4,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "SDWWWS::crypto": {
+      "n_trades": 3,
+      "total_pnl": 0.65,
+      "avg_pnl": 0.22,
+      "win_rate": 0.6667,
+      "sharpe": 2.2997,
+      "is_profitable": true
+    },
+    "Sassy-Bucket::sports": {
+      "n_trades": 14,
+      "total_pnl": -12.91,
+      "avg_pnl": -0.92,
+      "win_rate": 0.2857,
+      "sharpe": -2.7744,
+      "is_profitable": false
+    },
+    "SemyonMarmeladov::sports": {
+      "n_trades": 3,
+      "total_pnl": -8.34,
+      "avg_pnl": -2.78,
+      "win_rate": 0.0,
+      "sharpe": -163.3808,
+      "is_profitable": false
+    },
+    "Soarin22::sports": {
+      "n_trades": 3,
+      "total_pnl": 163.21,
+      "avg_pnl": 54.4,
+      "win_rate": 1.0,
+      "sharpe": 2.7408,
+      "is_profitable": true
+    },
+    "Supah9ga::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.54,
+      "avg_pnl": 0.18,
+      "win_rate": 0.3333,
+      "sharpe": 1.2247,
+      "is_profitable": true
+    },
+    "Zywoo123::sports": {
+      "n_trades": 7,
+      "total_pnl": -3.31,
+      "avg_pnl": -0.47,
+      "win_rate": 0.1429,
+      "sharpe": -0.7781,
+      "is_profitable": false
+    },
+    "anoin123::general": {
+      "n_trades": 7,
+      "total_pnl": -79.59,
+      "avg_pnl": -11.37,
+      "win_rate": 0.0,
+      "sharpe": -1.1315,
+      "is_profitable": false
+    },
+    "anoin123::geopolitics": {
+      "n_trades": 8,
+      "total_pnl": 230.57,
+      "avg_pnl": 28.82,
+      "win_rate": 0.5,
+      "sharpe": 0.8461,
+      "is_profitable": true
+    },
+    "arlanta::sports": {
+      "n_trades": 7,
+      "total_pnl": 1.18,
+      "avg_pnl": 0.17,
+      "win_rate": 0.5714,
+      "sharpe": 2.8543,
+      "is_profitable": true
+    },
+    "askilika::sports": {
+      "n_trades": 7,
+      "total_pnl": 22.47,
+      "avg_pnl": 3.21,
+      "win_rate": 0.4286,
+      "sharpe": 0.9362,
+      "is_profitable": true
+    },
+    "autoresearch_llm::general": {
+      "n_trades": 919,
+      "total_pnl": 32452.75,
+      "avg_pnl": 35.31,
+      "win_rate": 0.4766,
+      "sharpe": 3.0364,
+      "is_profitable": true
+    },
+    "bcda::sports": {
+      "n_trades": 6,
+      "total_pnl": 28.42,
+      "avg_pnl": 4.74,
+      "win_rate": 0.5,
+      "sharpe": 1.5485,
+      "is_profitable": true
+    },
+    "bossoskil1::sports": {
+      "n_trades": 5,
+      "total_pnl": -20.21,
+      "avg_pnl": -4.04,
+      "win_rate": 0.0,
+      "sharpe": -1.7172,
+      "is_profitable": false
+    },
+    "cruzNBA::sports": {
+      "n_trades": 4,
+      "total_pnl": -3.01,
+      "avg_pnl": -0.75,
+      "win_rate": 0.75,
+      "sharpe": -0.7239,
+      "is_profitable": false
+    },
+    "downtownfee::sports": {
+      "n_trades": 3,
+      "total_pnl": -39.67,
+      "avg_pnl": -13.22,
+      "win_rate": 0.0,
+      "sharpe": -1.2247,
+      "is_profitable": false
+    },
+    "fuc.your.mother::sports": {
+      "n_trades": 4,
+      "total_pnl": -12.42,
+      "avg_pnl": -3.11,
+      "win_rate": 0.0,
+      "sharpe": -1.9999,
+      "is_profitable": false
+    },
+    "jdsahgf::sports": {
+      "n_trades": 13,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "jtwyslljy::sports": {
+      "n_trades": 5,
+      "total_pnl": 9.01,
+      "avg_pnl": 1.8,
+      "win_rate": 0.6,
+      "sharpe": 1.6818,
+      "is_profitable": true
+    },
+    "lebronstan23::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "mooseborzoi::politics": {
+      "n_trades": 3,
+      "total_pnl": 1.07,
+      "avg_pnl": 0.36,
+      "win_rate": 0.6667,
+      "sharpe": 1.5802,
+      "is_profitable": true
+    },
+    "p100-0x20d643::sports": {
+      "n_trades": 3,
+      "total_pnl": -200.51,
+      "avg_pnl": -66.84,
+      "win_rate": 0.3333,
+      "sharpe": -1.2092,
+      "is_profitable": false
+    },
+    "p102-0xf68a28::sports": {
+      "n_trades": 19,
+      "total_pnl": -655.59,
+      "avg_pnl": -34.5,
+      "win_rate": 0.2105,
+      "sharpe": -2.4018,
+      "is_profitable": false
+    },
+    "p107-0x19254b::economics": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "p108-0x9eca63::sports": {
+      "n_trades": 4,
+      "total_pnl": -3.53,
+      "avg_pnl": -0.88,
+      "win_rate": 0.75,
+      "sharpe": -0.8276,
+      "is_profitable": false
+    },
+    "p111-0xe7a205::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "p112-0xafd492::sports": {
+      "n_trades": 8,
+      "total_pnl": 2.8,
+      "avg_pnl": 0.35,
+      "win_rate": 0.625,
+      "sharpe": 2.1137,
+      "is_profitable": true
+    },
+    "p116-0xfea31b::sports": {
+      "n_trades": 9,
+      "total_pnl": 1.51,
+      "avg_pnl": 0.17,
+      "win_rate": 0.3333,
+      "sharpe": 1.8385,
+      "is_profitable": true
+    },
+    "p116-0xfea31b::general": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "p12-0x5bec79::sports": {
+      "n_trades": 14,
+      "total_pnl": -38.26,
+      "avg_pnl": -2.73,
+      "win_rate": 0.0,
+      "sharpe": -5.0173,
+      "is_profitable": false
+    },
+    "p125-0xa1b3fa::sports": {
+      "n_trades": 6,
+      "total_pnl": 1.37,
+      "avg_pnl": 0.23,
+      "win_rate": 0.3333,
+      "sharpe": 1.5287,
+      "is_profitable": true
+    },
+    "p126-0x3c3ff2::sports": {
+      "n_trades": 13,
+      "total_pnl": 1.85,
+      "avg_pnl": 0.14,
+      "win_rate": 0.3077,
+      "sharpe": 1.6769,
+      "is_profitable": true
+    },
+    "p127-0x9770ca::sports": {
+      "n_trades": 3,
+      "total_pnl": -29.67,
+      "avg_pnl": -9.89,
+      "win_rate": 0.0,
+      "sharpe": -4.6986,
+      "is_profitable": false
+    },
+    "p136-0x230287::sports": {
+      "n_trades": 4,
+      "total_pnl": 177.55,
+      "avg_pnl": 44.39,
+      "win_rate": 0.75,
+      "sharpe": 2.0528,
+      "is_profitable": true
+    },
+    "p137-0x681504::sports": {
+      "n_trades": 12,
+      "total_pnl": -465.73,
+      "avg_pnl": -38.81,
+      "win_rate": 0.4167,
+      "sharpe": -2.027,
+      "is_profitable": false
+    },
+    "p150-0xba389f::sports": {
+      "n_trades": 25,
+      "total_pnl": -6.06,
+      "avg_pnl": -0.24,
+      "win_rate": 0.32,
+      "sharpe": -0.9005,
+      "is_profitable": false
+    },
+    "p167-0x033f03::politics": {
+      "n_trades": 5,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "p167-0x033f03::sports": {
+      "n_trades": 11,
+      "total_pnl": -4.37,
+      "avg_pnl": -0.4,
+      "win_rate": 0.2727,
+      "sharpe": -0.0392,
+      "is_profitable": false
+    },
+    "p183-0x437961::sports": {
+      "n_trades": 12,
+      "total_pnl": -432.55,
+      "avg_pnl": -36.05,
+      "win_rate": 0.1667,
+      "sharpe": -1.9396,
+      "is_profitable": false
+    },
+    "p184-0x0e64bd::sports": {
+      "n_trades": 11,
+      "total_pnl": 1.5,
+      "avg_pnl": 0.14,
+      "win_rate": 0.0909,
+      "sharpe": 1.0488,
+      "is_profitable": true
+    },
+    "p187-0x1b47e9::sports": {
+      "n_trades": 7,
+      "total_pnl": 0.67,
+      "avg_pnl": 0.1,
+      "win_rate": 0.2857,
+      "sharpe": 1.4426,
+      "is_profitable": true
+    },
+    "p2-0x492442::sports": {
+      "n_trades": 5,
+      "total_pnl": 289.8,
+      "avg_pnl": 57.96,
+      "win_rate": 0.8,
+      "sharpe": 3.1328,
+      "is_profitable": true
+    },
+    "p204-0x8740bd::sports": {
+      "n_trades": 5,
+      "total_pnl": -30.85,
+      "avg_pnl": -6.17,
+      "win_rate": 0.0,
+      "sharpe": -1.6622,
+      "is_profitable": false
+    },
+    "p206-0x537576::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "p232-0xd10695::sports": {
+      "n_trades": 12,
+      "total_pnl": -1483.71,
+      "avg_pnl": -123.64,
+      "win_rate": 0.0,
+      "sharpe": -21.0221,
+      "is_profitable": false
+    },
+    "p233-0x5d1d9c::sports": {
+      "n_trades": 17,
+      "total_pnl": -148.73,
+      "avg_pnl": -8.75,
+      "win_rate": 0.5882,
+      "sharpe": -0.4946,
+      "is_profitable": false
+    },
+    "p246-0xcbba64::sports": {
+      "n_trades": 9,
+      "total_pnl": -3.63,
+      "avg_pnl": -0.4,
+      "win_rate": 0.0,
+      "sharpe": -1.0607,
+      "is_profitable": false
+    },
+    "p26-0x1117ea::sports": {
+      "n_trades": 9,
+      "total_pnl": 226.32,
+      "avg_pnl": 25.15,
+      "win_rate": 0.6667,
+      "sharpe": 1.5682,
+      "is_profitable": true
+    },
+    "p264-0x32ccd9::sports": {
+      "n_trades": 4,
+      "total_pnl": -152.26,
+      "avg_pnl": -38.06,
+      "win_rate": 0.25,
+      "sharpe": -0.8271,
+      "is_profitable": false
+    },
+    "p30-0x83d228::sports": {
+      "n_trades": 5,
+      "total_pnl": -32.48,
+      "avg_pnl": -6.5,
+      "win_rate": 0.4,
+      "sharpe": -1.9784,
+      "is_profitable": false
+    },
+    "p32-0xe72bb5::general": {
+      "n_trades": 13,
+      "total_pnl": 534.49,
+      "avg_pnl": 41.11,
+      "win_rate": 0.4615,
+      "sharpe": 1.0696,
+      "is_profitable": true
+    },
+    "p32-0xe72bb5::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "p37-0xe5efd6::crypto": {
+      "n_trades": 8,
+      "total_pnl": -1761.03,
+      "avg_pnl": -220.13,
+      "win_rate": 0.0,
+      "sharpe": -6.3175,
+      "is_profitable": false
+    },
+    "p4-0x93abbc::crypto": {
+      "n_trades": 3,
+      "total_pnl": -17.04,
+      "avg_pnl": -5.68,
+      "win_rate": 0.3333,
+      "sharpe": -0.398,
+      "is_profitable": false
+    },
+    "p51-0x31864f::sports": {
+      "n_trades": 35,
+      "total_pnl": 7.94,
+      "avg_pnl": 0.23,
+      "win_rate": 0.7143,
+      "sharpe": 1.6246,
+      "is_profitable": true
+    },
+    "p60-0x162f6f::geopolitics": {
+      "n_trades": 3,
+      "total_pnl": -312.5,
+      "avg_pnl": -104.17,
+      "win_rate": 0.0,
+      "sharpe": -1.2247,
+      "is_profitable": false
+    },
+    "p62-0x86fbea::sports": {
+      "n_trades": 10,
+      "total_pnl": -340.82,
+      "avg_pnl": -34.08,
+      "win_rate": 0.4,
+      "sharpe": -1.2873,
+      "is_profitable": false
+    },
+    "p72-0x39d3c7::sports": {
+      "n_trades": 19,
+      "total_pnl": 45.32,
+      "avg_pnl": 2.39,
+      "win_rate": 0.4737,
+      "sharpe": 1.458,
+      "is_profitable": true
+    },
+    "p73-0x23073a::sports": {
+      "n_trades": 8,
+      "total_pnl": -9.45,
+      "avg_pnl": -1.18,
+      "win_rate": 0.125,
+      "sharpe": -1.5049,
+      "is_profitable": false
+    },
+    "p75-0xacb206::sports": {
+      "n_trades": 9,
+      "total_pnl": -10.98,
+      "avg_pnl": -1.22,
+      "win_rate": 0.1111,
+      "sharpe": -0.9155,
+      "is_profitable": false
+    },
+    "p81-0xdb2223::sports": {
+      "n_trades": 10,
+      "total_pnl": 95.79,
+      "avg_pnl": 9.58,
+      "win_rate": 0.2,
+      "sharpe": 1.1682,
+      "is_profitable": true
+    },
+    "p82-0x19e27e::sports": {
+      "n_trades": 7,
+      "total_pnl": 3.46,
+      "avg_pnl": 0.49,
+      "win_rate": 0.4286,
+      "sharpe": 1.4035,
+      "is_profitable": true
+    },
+    "p83-0x2a91d1::sports": {
+      "n_trades": 4,
+      "total_pnl": 32.7,
+      "avg_pnl": 8.17,
+      "win_rate": 0.5,
+      "sharpe": 1.1723,
+      "is_profitable": true
+    },
+    "p85-0x30c7ac::sports": {
+      "n_trades": 18,
+      "total_pnl": 5.66,
+      "avg_pnl": 0.31,
+      "win_rate": 0.3889,
+      "sharpe": 2.3246,
+      "is_profitable": true
+    },
+    "p9-0xa71093::sports": {
+      "n_trades": 26,
+      "total_pnl": 38.45,
+      "avg_pnl": 1.48,
+      "win_rate": 0.2308,
+      "sharpe": 0.8216,
+      "is_profitable": true
+    },
+    "phonesculptor::sports": {
+      "n_trades": 13,
+      "total_pnl": -4.74,
+      "avg_pnl": -0.36,
+      "win_rate": 0.0769,
+      "sharpe": -0.8246,
+      "is_profitable": false
+    },
+    "polywog::geopolitics": {
+      "n_trades": 3,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "ramadamaramadam::sports": {
+      "n_trades": 3,
+      "total_pnl": -12.42,
+      "avg_pnl": -4.14,
+      "win_rate": 0.0,
+      "sharpe": -2.4493,
+      "is_profitable": false
+    },
+    "sjqdhqsjgd65::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.57,
+      "avg_pnl": 0.19,
+      "win_rate": 0.3333,
+      "sharpe": 1.2247,
+      "is_profitable": true
+    },
+    "sleepy-panda::sports": {
+      "n_trades": 8,
+      "total_pnl": -4.7,
+      "avg_pnl": -0.59,
+      "win_rate": 0.0,
+      "sharpe": -1.069,
+      "is_profitable": false
+    },
+    "snowleopard1::sports": {
+      "n_trades": 32,
+      "total_pnl": 10.4,
+      "avg_pnl": 0.32,
+      "win_rate": 0.1562,
+      "sharpe": 1.581,
+      "is_profitable": true
+    },
+    "surf::geopolitics": {
+      "n_trades": 3,
+      "total_pnl": 1350.51,
+      "avg_pnl": 450.17,
+      "win_rate": 0.3333,
+      "sharpe": 1.2247,
+      "is_profitable": true
+    },
+    "surfandturf::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.93,
+      "avg_pnl": 0.31,
+      "win_rate": 0.3333,
+      "sharpe": 1.2247,
+      "is_profitable": true
+    },
+    "sybil:sybil_group_1::sybil_signal": {
+      "n_trades": 7,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_1::sybil_coordination": {
+      "n_trades": 23,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_1::whale_follow": {
+      "n_trades": 19,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_1::concentrated_follow": {
+      "n_trades": 4,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_1::aggregate_conviction": {
+      "n_trades": 20,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_1_whale::sybil": {
+      "n_trades": 8,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_2::whale_follow": {
+      "n_trades": 18,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_2::aggregate_conviction": {
+      "n_trades": 20,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_3::whale_follow": {
+      "n_trades": 17,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_group_3::aggregate_conviction": {
+      "n_trades": 20,
+      "total_pnl": 0.0,
+      "avg_pnl": 0.0,
+      "win_rate": 0.0,
+      "sharpe": 0.0,
+      "is_profitable": false
+    },
+    "sybil_meta_entity_cluster_3::general": {
+      "n_trades": 8,
+      "total_pnl": 0.48,
+      "avg_pnl": 0.06,
+      "win_rate": 1.0,
+      "sharpe": 0.0,
+      "is_profitable": true
+    },
+    "sybil_meta_sybil_group_1::sports": {
+      "n_trades": 3,
+      "total_pnl": 0.98,
+      "avg_pnl": 0.33,
+      "win_rate": 1.0,
+      "sharpe": 4.6652,
+      "is_profitable": true
+    },
+    "sybil_meta_sybil_group_1::general": {
+      "n_trades": 10,
+      "total_pnl": 2.28,
+      "avg_pnl": 0.23,
+      "win_rate": 0.9,
+      "sharpe": 1.1642,
+      "is_profitable": true
+    },
+    "takeormake::sports": {
+      "n_trades": 3,
+      "total_pnl": 1.14,
+      "avg_pnl": 0.38,
+      "win_rate": 0.6667,
+      "sharpe": 0.6152,
+      "is_profitable": true
+    },
+    "wan123::geopolitics": {
+      "n_trades": 6,
+      "total_pnl": -6.23,
+      "avg_pnl": -1.04,
+      "win_rate": 0.1667,
+      "sharpe": -1.6929,
+      "is_profitable": false
+    },
+    "weflyhigh::sports": {
+      "n_trades": 15,
+      "total_pnl": -27.48,
+      "avg_pnl": -1.83,
+      "win_rate": 0.0,
+      "sharpe": -4.1302,
+      "is_profitable": false
+    }
+  }
+}

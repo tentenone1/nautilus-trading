@@ -39,6 +39,52 @@ class SignalBridge:
         """
         self._s = strategy
 
+        # ── Load market metadata cache (Tier 1 instrument resolution) ─────────────
+        # The signal generator pre-fetches market metadata and writes it here during
+        # signal generation. Loading it here means _ensure_instrument_for_signal
+        # can resolve instruments WITHOUT making a live CLOB API call (cache hit).
+        self._market_meta_cache: dict = {}
+        self._load_market_meta_cache()
+
+        # Inject the cache into SignalHandler so _ensure_instrument_for_signal
+        # can use it as Tier 1 (upstream cache) before falling through to CLOB/Gamma.
+        if self._s._signal_handler is not None:
+            self._s._signal_handler._market_meta_cache = self._market_meta_cache
+
+    def _load_market_meta_cache(self) -> None:
+        """Load market metadata cache from disk (written by signal generator).
+
+        The cache maps condition_id -> market metadata dict. Entries older than
+        5 minutes are filtered out on load.
+        """
+        import time as _time
+
+        cache_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "research", "autoresearch_market_meta_cache.json"
+        )
+        if not os.path.exists(cache_path):
+            self.log.debug("Market metadata cache not found (will use live API)")
+            return
+        try:
+            with open(cache_path) as f:
+                raw = json.load(f)
+            now = _time.time()
+            for cid, meta in raw.items():
+                age = now - meta.get("_cached_at", 0)
+                if age > 300:  # 5-minute TTL
+                    continue
+                self._market_meta_cache[cid] = meta
+            max_age = 0
+            if self._market_meta_cache:
+                max_age = max((now - m.get("_cached_at", now) for m in self._market_meta_cache.values()), default=0)
+            self.log.info(
+                f"Market metadata cache loaded: {len(self._market_meta_cache)} entries "
+                f"(5min TTL, oldest entry {max_age:.0f}s old)"
+            )
+        except (json.JSONDecodeError, OSError) as e:
+            self.log.warning(f"Failed to load market metadata cache: {e}")
+
     @property
     def log(self):
         return self._s.log
@@ -135,10 +181,28 @@ class SignalBridge:
                 suggested_size = min(100.0, s.get("total_exposure_usd", 0) * 0.01)
 
                 group_id = s.get("group_id", "unknown")
+                # Resolve token_id from condition_id via Polymarket API
+                sybil_token_id = s.get("token_id", "")
+                sybil_condition_id = s.get("condition_id", "")
+                if not sybil_token_id and sybil_condition_id:
+                    try:
+                        market_url = f"https://clob.polymarket.com/markets/{sybil_condition_id}"
+                        req2 = urllib.request.Request(market_url, headers={"User-Agent": "nautilus-sybil/1.0"})
+                        with urllib.request.urlopen(req2, timeout=5) as resp2:
+                            market_data = json.loads(resp2.read().decode())
+                        tokens = market_data.get("tokens", [])
+                        if tokens:
+                            if outcome.lower() == "no":
+                                sybil_token_id = tokens[1].get("token_id", "") if len(tokens) > 1 else tokens[0].get("token_id", "")
+                            else:
+                                sybil_token_id = tokens[0].get("token_id", "")
+                    except Exception as tok_err:
+                        self.log.warning(f"Sybil token_id lookup failed: {tok_err}")
+
                 signal_obj = WhaleSignal(
                     signal_type=WhaleSignalType.LARGE_POSITION,
-                    condition_id=s.get("condition_id", ""),
-                    token_id="",
+                    condition_id=sybil_condition_id,
+                    token_id=sybil_token_id,
                     outcome=outcome,
                     side=side,
                     confidence=confidence,
@@ -149,7 +213,7 @@ class SignalBridge:
                     timestamp=time.time(),
                     reason=s.get("reason", f"Sybil {group_id} signal"),
                     market_title=s.get("market_title", ""),
-                    market_category="",
+                    market_category=s.get("market_category", ""),
                     whale_address="",
                     edge_score=confidence * 10,
                 )

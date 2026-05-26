@@ -1,10 +1,10 @@
 {
-  "prev_open_count": 0,
+  "prev_open_count": 4,
   "stall_start": null,
   "consecutive_gaps": 0,
-  "recent_signals": 0,
-  "latest_signal": null,
-  "recent_trades": 0,
-  "latest_trade": null,
-  "open_trade_count": 0
+  "recent_signals": 2,
+  "latest_signal": "2026-05-26T04:52:20.483411+00:00",
+  "recent_trades": 2,
+  "latest_trade": "2026-05-26T04:52:20.483411+00:00",
+  "open_trade_count": 4
 }

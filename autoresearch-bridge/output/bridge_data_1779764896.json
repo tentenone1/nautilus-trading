@@ -1,0 +1,17 @@
+[
+  {
+    "trade_id": "839aa12a-c043-4232-84ee-a6206622efbb",
+    "timestamp": "2026-05-26 03:03:57.378251+00:00",
+    "market_title": "Will the Republicans win the 2028 US Presidential Election?",
+    "condition_id": "0x0a99479228e93524b25676ae69b94bd3f4278a6bca8d8c265c84d24755399cf5",
+    "side": "SELL",
+    "entry_price": 0.5,
+    "exit_price": null,
+    "position_size_usd": 1.875,
+    "realized_pnl": null,
+    "realized_return": null,
+    "resolution_outcome": null,
+    "category": "general",
+    "instrument_id": "0x0a99479228e93524b25676ae69b94bd3f4278a6bca8d8c265c84d24755399cf5-67109747366255871599717338045111308888043498275177238365560740200996017915657.POLYMARKET"
+  }
+]

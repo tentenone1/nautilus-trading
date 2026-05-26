@@ -181,6 +181,8 @@ def log_trade_to_db(
     fill_completion_pct: float = 100.0,
     snapshot_id: str = "",
     paper_trade: int = 0,
+    config_version: str = "",
+    whale_type: str = "",
     db_path: Optional[str] = None,
     log_func: Optional[Callable[[str], None]] = None,
 ) -> Optional[str]:
@@ -256,6 +258,11 @@ def log_trade_to_db(
         except Exception:
             pass  # mapping DB unavailable — columns remain None
 
+        # ── Guard: slippage_bps is meaningless without an actual fill price ──
+        # Store SQL NULL so historical queries never confuse a missing fill
+        # with a 0-bps or sentinel value (-10000).
+        _slippage_bps: float | None = None if actual_fill_price is None else slippage_bps
+
         conn.execute("BEGIN TRANSACTION")
         conn.execute("""
             INSERT OR IGNORE INTO trades (
@@ -266,8 +273,8 @@ def log_trade_to_db(
                 detection_delay_ms, execution_delay_ms, fill_delay_ms,
                 total_latency_ms, intended_entry_price, actual_fill_price,
                 slippage_bps, fill_completion_pct, snapshot_id, paper_trade,
-                market_slug, token_index, token0_outcome, token1_outcome
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                market_slug, token_index, token0_outcome, token1_outcome, config_version, whale_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trade_id,
             timestamp,
@@ -291,7 +298,7 @@ def log_trade_to_db(
             total_latency_ms,
             intended_entry_price,
             actual_fill_price,
-            slippage_bps,
+            _slippage_bps,
             fill_completion_pct,
             snapshot_id,
             paper_trade,
@@ -299,6 +306,8 @@ def log_trade_to_db(
             _token_index,
             _token0_outcome,
             _token1_outcome,
+            config_version,
+            whale_type,
         ))
         conn.execute("COMMIT")
         conn.close()
@@ -355,6 +364,7 @@ def update_trade_latency_fields(
     total_latency_ms: int,
     slippage_bps: float,
     fill_completion_pct: float,
+    actual_fill_price: float | None = None,
     db_path: str | None = None,
 ) -> bool:
     """Update latency and slippage fields for an existing trade.
@@ -371,6 +381,7 @@ def update_trade_latency_fields(
         total_latency_ms: Total whale detection to complete fill.
         slippage_bps: Slippage in basis points.
         fill_completion_pct: Fill completion percentage (0-100).
+        actual_fill_price: Actual average fill price from the market.
         db_path: Optional override for trades.db path.
 
     Returns:
@@ -383,21 +394,43 @@ def update_trade_latency_fields(
     try:
         conn = sqlite3.connect(str(db))
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute(
-            "UPDATE trades SET "
-            "detection_delay_ms=?, execution_delay_ms=?, fill_delay_ms=?, "
-            "total_latency_ms=?, slippage_bps=?, fill_completion_pct=? "
-            "WHERE trade_id=?",
-            (
-                detection_delay_ms,
-                execution_delay_ms,
-                fill_delay_ms,
-                total_latency_ms,
-                slippage_bps,
-                fill_completion_pct,
-                trade_id,
-            ),
-        )
+        # ── Guard: slippage_bps is only meaningful with an actual fill price ──────
+        _slippage_bps: float | None = slippage_bps if actual_fill_price is not None else None
+
+        if actual_fill_price is not None:
+            conn.execute(
+                "UPDATE trades SET "
+                "detection_delay_ms=?, execution_delay_ms=?, fill_delay_ms=?, "
+                "total_latency_ms=?, slippage_bps=?, fill_completion_pct=?, "
+                "actual_fill_price=? "
+                "WHERE trade_id=?",
+                (
+                    detection_delay_ms,
+                    execution_delay_ms,
+                    fill_delay_ms,
+                    total_latency_ms,
+                    _slippage_bps,
+                    fill_completion_pct,
+                    actual_fill_price,
+                    trade_id,
+                ),
+            )
+        else:
+            conn.execute(
+                "UPDATE trades SET "
+                "detection_delay_ms=?, execution_delay_ms=?, fill_delay_ms=?, "
+                "total_latency_ms=?, slippage_bps=?, fill_completion_pct=? "
+                "WHERE trade_id=?",
+                (
+                    detection_delay_ms,
+                    execution_delay_ms,
+                    fill_delay_ms,
+                    total_latency_ms,
+                    _slippage_bps,
+                    fill_completion_pct,
+                    trade_id,
+                ),
+            )
         conn.commit()
         return True
     except Exception:

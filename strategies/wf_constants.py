@@ -2,6 +2,39 @@
 
 All module-level constants and the WhaleFollowerConfig dataclass,
 extracted from whale_follower.py for centralized management.
+
+============================================
+v5.5 PHASE D FREEZE — 2026-05-26
+============================================
+CHANGELOG:
+  • G1:  Correlation Gate — block simultaneous copy+fade of correlated whales
+  • G2:  Realistic Slippage — 200bps, 70% fill prob (was 0bps)
+  • G3:  Exit Strategy Audit — max_hold exit added; pre_res 48h stop-loss confirmed
+  • G4:  LLM Degraded-Mode Fallback — signal_bridge.py graceful degradation
+  • G5:  Heartbeat Alert Cron — paper trader health monitoring
+  • G6:  Edge Scorer Feature Upgrade — category + whale WR + action multiplier
+  • C4:  Poly_data Fade Target Backtest — p102-0xf68a28 validated (PARTIAL_OR_HOLD)
+  • C5:  deep_value & panic_fade offline — both NEGATIVE, do not deploy
+
+CONFIG:
+  • ACTIVE_CONFIG_VERSION = "v5.5"
+  • COPY_WIN_RATE_BOOST = 2.0 (edge_scorer.py)
+  • FADE_WIN_RATE_BOOST  = 2.2 (edge_scorer.py)
+
+FADE CANDIDATES (paper-only, requires further validation before live):
+  • p102-0xf68a28 — MOMENTUM, 26% WR, +$139 live PnL. Fading: +$327 (C4 validated)
+    Status: HOLD — do not activate in live until 30-day paper confirms
+
+BLACKLIST ADDITIONS THIS FREEZE:
+  • p232-0xd10695 — SKIP (0% WR contrarian, too risky)
+  • p37-0xe5efd6  — SKIP (INFORMATION type, wrong for fade)
+  • TTEST2         — confirmed in WHALE_BLACKLIST already
+
+STABILITY:
+  • Service running since 2026-05-26 12:25:58 CST
+  • All Phase A-C tasks complete
+  • Phase D freeze complete
+============================================
 """
 
 from __future__ import annotations
@@ -11,7 +44,14 @@ from nautilus_trader.model.identifiers import InstrumentId
 
 # ── Configuration Version ──────────────────────────────────────────────────
 
-CONFIG_VERSION = "v5.3-crypto-fade-autoresearch-fix"
+# Legacy alias — kept so any old code that imports CONFIG_VERSION still works.
+CONFIG_VERSION = "v5.4-sports-quarantine-fix"
+
+# Single source of truth for all new trade records. Bump this to v5.6, v5.7,
+# etc. whenever a config-changing code change is deployed. The 48h P&L gate
+# uses this to detect a code/DB version mismatch and blocks trading if the
+# most recent closed trade was recorded under a different version.
+ACTIVE_CONFIG_VERSION = "v5.5"
 
 
 # ── Trade Buffer Thresholds ──────────────────────────────────────────────────
@@ -188,6 +228,11 @@ LIQUIDITY_TIER3_THRESHOLD = 1_000_000  # Moderate: reduce to 50% of Kelly
 LIQUIDITY_TIER4_MULTIPLIER = 0.25
 LIQUIDITY_TIER3_MULTIPLIER = 0.50
 LIQUIDITY_TIER2_MULTIPLIER = 0.75
+
+
+# ── Correlation Gate ───────────────────────────────────────────────────────────
+
+MAX_CORRELATED_POSITIONS = 3   # Reject if ≥3 open positions share a keyword cluster
 
 
 # ── Phase 1 Risk Control Limits ───────────────────────────────────────────────

@@ -135,6 +135,8 @@ class SignalHandler:
             if pipeline_result.side_flip:
                 signal.side = pipeline_result.side
             tier = pipeline_result.tier
+            # Store whale_type on strategy for state_manager DB logging
+            self._s._last_whale_type = getattr(pipeline_result, 'whale_type', '')
             tier_config = self.whale_tiering.get_tier_config(
                 getattr(signal, 'alpha_score', 50.0) or 50.0
             ) if self.whale_tiering else {}
@@ -146,20 +148,34 @@ class SignalHandler:
             tier = self.whale_tiering.get_tier(alpha_score) if self.whale_tiering else "unknown"
             tier_config = self.whale_tiering.get_tier_config(alpha_score) if self.whale_tiering else {}
 
-        # ── Step 2: Sports gate — route sports through autoresearch only ─────────
+        # ── Step 2: HARD SPORTS QUARANTINE — block ALL sports signals ──────────────
+        # v5.0-emergency-fix: Remove fade bypass. Sports has been a consistent P&L drain
+        # (-$4,142 all-time) driven by systematic losses from whale COPY signals (28% WR)
+        # and now also from fade signals on blacklisted whales that have insufficient
+        # statistical basis. Hard quarantine = no sports signals at all, regardless of
+        # whale type, edge score, or fade status.
         mc = getattr(signal, 'market_category', '') or ''
         market_title = getattr(signal, 'market_title', '') or ''
-        # Inline sports check: combine title + category for pattern matching
         combined = f"{market_title}|{mc}".lower()
         is_sports = any(p in combined for p in (
             'nba', 'nfl', 'mlb', 'nhl', 'ncaaf', 'ncaab', 'ufc', 'boxing',
             'tennis', 'soccer', 'football', 'basketball', 'baseball', 'hockey',
             'sports', 'game ', 'championship', 'finals', 'playoffs', 'season',
+            # Team name fragments that leak through as 'general' category
+            'knicks', 'cavaliers', 'celtics', 'lakers', 'warriors', 'bulls',
+            'spread:', 'point spread', 'over/under', 'moneyline', 'totals',
+            'nuggets', 'mavericks', 'heat', 'spurs', 'nets', 'bucks', 'raptors',
+            'eagles', 'chiefs', '49ers', 'cowboys', 'packers', 'patriots', 'raiders',
+            'yankees', 'red sox', 'dodgers', 'cubs', 'giants', 'astros', 'braves',
+            'rangers', 'oilers', 'penguins', 'maple leafs', 'devils', 'avalanche',
+            'diamondbacks', 'guardians', 'phillies', 'mariners', 'twins', 'orioles',
         ))
         if is_sports:
-            # Sports whale signals: block entirely. Whales have 28% WR in sports,
-            # autoresearch has 45% WR — sports must go through the autoresearch path.
-            self.log.info(f"SPORTS_GATE: blocking whale signal for sports market | {signal.condition_id[:40]}")
+            self.log.info(
+                f"SPORTS_QUARANTINE [v5.0]: blocking ALL sports signals | "
+                f"whale={signal.whale_name} | {signal.condition_id[:30]}... | "
+                f"is_fade={is_fade}"
+            )
             return
 
         # ── Step 3: Risk checks (RiskManager if available) ────────────────────
@@ -225,7 +241,16 @@ class SignalHandler:
                     f"INTEL SIZE: {signal.whale_name} ${original_size:.2f} -> ${new_size:.2f} ({intel_note})"
                 )
 
-        # ── Step 5: LLM quality scoring ────────────────────────────────────────
+        # ── Step 5: LLM quality scoring (ANNOTATION-ONLY — audit quarantine) ───────────
+        # AUDIT FINDING: llm_score from MiniMax API is an unvalidated black-box classifier.
+        # It is NOT used in any signal decision gate. It is:
+        #   - Computed here for logging/observability only
+        #   - Included in validation event payloads (SIGNAL_GENERATED)
+        #   - NOT used in any `if` statement that controls whether to proceed
+        # This ensures the LLM score does not influence trading decisions and satisfies
+        # the audit requirement that black-box models are quarantined from the decision path.
+        # If llm_score is ever added to a gate, it must go through the same statistical
+        # validation as the rest of the signal pipeline (backtest + OOS testing).
         llm_score = 0
         try:
             from strategies.llm_scorer import llm_score_signal as _llm_score
@@ -359,7 +384,7 @@ class SignalHandler:
 
                 log_event(
                     event_type=EventType.SIGNAL_GENERATED,
-                    data={
+                    payload={
                         "signal_id": validation_signal_id,
                         "whale_name": signal.whale_name,
                         "condition_id": signal.condition_id,
@@ -412,36 +437,195 @@ class SignalHandler:
         return None
 
     def _ensure_instrument_for_signal(self, condition_id: str, token_id: str, outcome: str) -> InstrumentId | None:
-        """Fetch market metadata and create instrument for a signal's market."""
+        """Fetch market metadata and create instrument for a signal's market.
+
+        Resolution strategy (3-tier fallback):
+          1. Check in-process metadata cache (populated upstream by signal generator)
+          2. CLOB API with retry + exponential backoff (3 attempts, 2s/4s/8s delays)
+          3. Gamma API as last resort (public endpoint, no auth needed)
+
+        Cached metadata is stored in-process with TTL to avoid redundant API calls
+        within the same timer cycle.
+        """
+        import time as _time
+
         inst_id = InstrumentId.from_str(f"{condition_id}-{token_id}.POLYMARKET")
         existing = self.cache.instrument(inst_id)
         if existing is not None:
             return inst_id
+
+        # ── Tier 1: Check in-process cache (populated upstream by signal generator) ──
+        if hasattr(self, "_market_meta_cache"):
+            cached = self._market_meta_cache.get(condition_id)
+            if cached is not None:
+                cache_age = _time.time() - cached.get("_cached_at", 0)
+                if cache_age < 300:  # Cache valid for 5 minutes
+                    try:
+                        market_info = cached["data"]
+                        tokens = market_info.get("tokens", [])
+                        token_data = next(
+                            (t for t in tokens if t.get("token_id") == token_id), None
+                        )
+                        if token_data:
+                            from nautilus_trader.adapters.polymarket.common.parsing import (
+                                parse_polymarket_instrument,
+                            )
+                            instrument = parse_polymarket_instrument(
+                                market_info=market_info,
+                                token_id=token_data["token_id"],
+                                outcome=token_data["outcome"],
+                            )
+                            self.cache.add_instrument(instrument)
+                            self._s.subscribe_quote_ticks(inst_id)
+                            self.log.info(
+                                f"Resolved instrument from upstream cache: {instrument.id.value[:50]}..."
+                            )
+                            return inst_id
+                    except Exception:
+                        pass  # Cache hit but parse failed — fall through to API
+
+        # ── Tier 2: CLOB API with retry + exponential backoff ─────────────────────────
+        _MAX_RETRIES = 3
+        _BASE_DELAY = 2.0  # seconds
+
+        for attempt in range(_MAX_RETRIES):
+            try:
+                market_info = self._s._clob.get_market(condition_id=condition_id)
+                if market_info and market_info.get("active", False):
+                    tokens = market_info.get("tokens", [])
+                    token_data = next(
+                        (t for t in tokens if t.get("token_id") == token_id), None
+                    )
+                    if token_data:
+                        from nautilus_trader.adapters.polymarket.common.parsing import (
+                            parse_polymarket_instrument,
+                        )
+                        instrument = parse_polymarket_instrument(
+                            market_info=market_info,
+                            token_id=token_data["token_id"],
+                            outcome=token_data["outcome"],
+                        )
+                        self.cache.add_instrument(instrument)
+                        self._s.subscribe_quote_ticks(inst_id)
+                        self.log.info(
+                            f"Registered dynamic instrument: {instrument.id.value[:50]} ..."
+                        )
+                        return inst_id
+                    else:
+                        # Market found but token not in response — might be a binary market
+                        # where token lookup just needs the outcome directly
+                        if tokens:
+                            token_data = tokens[0]
+                            from nautilus_trader.adapters.polymarket.common.parsing import (
+                                parse_polymarket_instrument,
+                            )
+                            instrument = parse_polymarket_instrument(
+                                market_info=market_info,
+                                token_id=token_data["token_id"],
+                                outcome=token_data["outcome"],
+                            )
+                            self.cache.add_instrument(instrument)
+                            self._s.subscribe_quote_ticks(inst_id)
+                            self.log.info(
+                                f"Registered dynamic instrument (fallback token): {instrument.id.value[:50]} ..."
+                            )
+                            return inst_id
+                if attempt < _MAX_RETRIES - 1:
+                    delay = _BASE_DELAY * (2 ** attempt)
+                    self.log.info(
+                        f"CLOB retry {attempt + 1}/{_MAX_RETRIES} for {condition_id[:20]}... "
+                        f"(market inactive or empty), waiting {delay:.0f}s"
+                    )
+                    _time.sleep(delay)
+                continue
+            except Exception as e:
+                if attempt < _MAX_RETRIES - 1:
+                    delay = _BASE_DELAY * (2 ** attempt)
+                    self.log.info(
+                        f"CLOB retry {attempt + 1}/{_MAX_RETRIES} for {condition_id[:20]}...: {e}, "
+                        f"waiting {delay:.0f}s"
+                    )
+                    _time.sleep(delay)
+                else:
+                    self.log.error(
+                        f"CLOB exhausted all retries for {condition_id[:20]}...: {e}"
+                    )
+
+        # ── Tier 3: Gamma API as last resort ──────────────────────────────────────────
         try:
-            market_info = self._s._clob.get_market(condition_id=condition_id)
-            if not market_info or not market_info.get("active", False):
-                self.log.info(f"Signal market inactive: {condition_id[:20]}...")
-                return None
-            tokens = market_info.get("tokens", [])
-            token_data = None
-            for t in tokens:
-                if t.get("token_id") == token_id:
-                    token_data = t
-                    break
-            if not token_data:
-                return None
-            from nautilus_trader.adapters.polymarket.common.parsing import parse_polymarket_instrument
-            instrument = parse_polymarket_instrument(
-                market_info=market_info,
-                token_id=token_data["token_id"],
-                outcome=token_data["outcome"],
+            import urllib.request as _urllib
+            import json as _json
+
+            gamma_url = (
+                f"https://gamma-api.polymarket.com/markets?condition_id={condition_id}"
             )
-            self.cache.add_instrument(instrument)
-            # Subscribe to quote ticks so dynamic instruments are checked by
-            # _check_all_positions() Phase 2 stop-loss/take-profit/resolution logic
-            self._s.subscribe_quote_ticks(inst_id)
-            self.log.info(f"Registered dynamic instrument: {instrument.id.value[:50]} ...")
-            return inst_id
-        except Exception as e:
-            self.log.error(f"Failed to register instrument for {condition_id[:20]}...: {e}")
-            return None
+            req = _urllib.Request(gamma_url, headers={"User-Agent": "nautilus-signal/1.0"})
+            with _urllib.urlopen(req, timeout=15) as resp:
+                gamma_data = _json.loads(resp.read())
+
+            if isinstance(gamma_data, list) and gamma_data:
+                m = gamma_data[0]
+                tokens_raw = _json.loads(m.get("clobTokenIds", "[]"))
+                outcomes_raw = _json.loads(m.get("outcomes", "[]"))
+                prices_raw = _json.loads(m.get("outcomePrices", "[]"))
+
+                if not tokens_raw or not outcomes_raw:
+                    self.log.error(
+                        f"Gamma fallback: no tokens/outcomes for {condition_id[:20]}..."
+                    )
+                    return None
+
+                # Build tokens list in the format parse_polymarket_instrument expects
+                tokens_for_parse = []
+                for i, (tid, outcome_str, price_str) in enumerate(
+                    zip(tokens_raw, outcomes_raw, prices_raw)
+                ):
+                    tokens_for_parse.append(
+                        {
+                            "token_id": tid,
+                            "outcome": outcome_str,
+                            "price": price_str,
+                        }
+                    )
+
+                gamma_market = {
+                    "condition_id": condition_id,
+                    "question": m.get("question", ""),
+                    "description": m.get("description", ""),
+                    "tokens": tokens_for_parse,
+                    "active": m.get("active", True),
+                    "closed": m.get("closed", False),
+                    "end_date_iso": m.get("endDateIso", ""),
+                    "liquidity": float(m.get("liquidity", 0) or 0),
+                    "volume24hr": float(m.get("volume24hr", 0) or 0),
+                }
+
+                # Find the matching token
+                token_data = next(
+                    (t for t in tokens_for_parse if t["token_id"] == token_id),
+                    tokens_for_parse[0] if tokens_for_parse else None,
+                )
+                if token_data:
+                    from nautilus_trader.adapters.polymarket.common.parsing import (
+                        parse_polymarket_instrument,
+                    )
+                    instrument = parse_polymarket_instrument(
+                        market_info=gamma_market,
+                        token_id=token_data["token_id"],
+                        outcome=token_data["outcome"],
+                    )
+                    self.cache.add_instrument(instrument)
+                    self._s.subscribe_quote_ticks(inst_id)
+                    self.log.info(
+                        f"Registered instrument via Gamma fallback: {instrument.id.value[:50]} ..."
+                    )
+                    return inst_id
+        except Exception as gamma_err:
+            self.log.error(
+                f"Gamma fallback also failed for {condition_id[:20]}...: {gamma_err}"
+            )
+
+        self.log.info(
+            f"Could not get instrument for {condition_id[:20]}... (all tiers exhausted)"
+        )
+        return None
