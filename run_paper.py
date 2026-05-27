@@ -20,6 +20,7 @@ import sys
 import threading
 import time as time_module
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
