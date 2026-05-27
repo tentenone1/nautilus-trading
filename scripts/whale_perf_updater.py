@@ -210,19 +210,19 @@ def compute_whale_stats(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
             t.whale_name,
             t.whale_address,
             COUNT(*)                                   AS trade_count,
-            SUM(CASE WHEN t.actual_pnl > 0 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate,
-            SUM(t.actual_pnl)                          AS total_pnl,
-            AVG(t.actual_pnl)                          AS avg_pnl,
+            SUM(CASE WHEN t.realized_pnl > 0 THEN 1 ELSE 0 END) * 1.0 / COUNT(*) AS win_rate,
+            SUM(t.realized_pnl)                          AS total_pnl,
+            AVG(t.realized_pnl)                          AS avg_pnl,
             SUM(t.position_size_usd)                   AS total_volume,
             COUNT(DISTINCT t.category)                  AS category_spread,
             -- Consistency: variance of per-trade P&L (lower = more consistent)
             CASE WHEN COUNT(*) > 1
-                 THEN AVG(t.actual_pnl * t.actual_pnl) - AVG(t.actual_pnl) * AVG(t.actual_pnl)
+                 THEN AVG(t.realized_pnl * t.realized_pnl) - AVG(t.realized_pnl) * AVG(t.realized_pnl)
                  ELSE 0
             END                                        AS pnl_variance
         FROM trades t
         WHERE t.whale_name     IS NOT NULL
-          AND t.actual_pnl     IS NOT NULL
+          AND t.realized_pnl     IS NOT NULL
           AND t.resolution_outcome IS NOT NULL
           AND t.timestamp      >= ?
         GROUP BY t.whale_name, t.whale_address
