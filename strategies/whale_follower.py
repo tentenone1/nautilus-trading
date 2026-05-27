@@ -907,6 +907,7 @@ class WhaleFollower(Strategy):
         signal_source: str = "known_whale",
         _validation_signal_id: str = "", _validation_snapshot_id: str = "",
         _decision_snapshot: dict | None = None,
+        _pipeline_passed: bool = False,
     ) -> None:
         """Delegate position entry to PositionManager."""
         if self._position_mgr is not None:
@@ -921,6 +922,7 @@ class WhaleFollower(Strategy):
                 _validation_signal_id=_validation_signal_id,
                 _validation_snapshot_id=_validation_snapshot_id,
                 _decision_snapshot=_decision_snapshot,
+                _pipeline_passed=_pipeline_passed,
             )
         else:
             self.log.warning("PositionManager not initialized, skipping entry")
