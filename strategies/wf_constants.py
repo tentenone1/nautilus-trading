@@ -30,6 +30,8 @@ from nautilus_trader.model.identifiers import InstrumentId
 # This allows full funnel analysis without risking any capital.
 SHADOW_MODE: bool = True
 SPORTS_TELEMETRY_MODE: bool = True  # M2: route sports through full pipeline for alpha mapping
+SHADOW_TRADE_POLL_BATCH_SIZE: int = 50       # Max shadow trades to poll per cron run
+SHADOW_TRADE_POLL_INTERVAL_MINUTES: int = 15  # Polling cron frequency
 
 # ── Cold-Start Bootstrap Mode ────────────────────────────────────────────────
 # When trades.db has fewer than BOOTSTRAP_MIN_TRADES rows, the system is in

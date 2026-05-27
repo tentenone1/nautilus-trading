@@ -336,6 +336,7 @@ def insert_shadow_trade(
             ),
         )
         conn.execute("COMMIT")
+
         return True
     except Exception:
         if conn:
@@ -712,6 +713,54 @@ def insert_decision_snapshot(
             ),
         )
         conn.execute("COMMIT")
+
+        # ── Shadow trade ledger ──────────────────────────────────────────────
+        # When a SHADOW_TRADE snapshot is recorded, also create a shadow_trades row
+        # so we can track hypothetical P&L via Polymarket market resolution polling.
+        if final_decision == "SHADOW_TRADE":
+            try:
+                from strategies.wf_shadow_ledger import insert_shadow_trade
+                combined = f"{market_title}|{category}".lower()
+                _SPORTS_KW = (
+                    "nba", "nfl", "mlb", "nhl", "ncaaf", "ncaab", "ufc", "boxing",
+                    "tennis", "soccer", "football", "basketball", "baseball", "hockey",
+                    "sports", "game ", "championship", "finals", "playoffs", "season",
+                    "knicks", "cavaliers", "celtics", "lakers", "warriors", "bulls",
+                    "spread:", "point spread", "over/under", "moneyline", "totals",
+                    "nuggets", "mavericks", "heat", "spurs", "nets", "bucks", "raptors",
+                    "eagles", "chiefs", "49ers", "cowboys", "packers", "patriots",
+                    "raiders", "yankees", "red sox", "dodgers", "cubs", "giants",
+                    "astros", "braves", "rangers", "oilers", "penguins", "maple leafs",
+                    "devils", "avalanche", "diamondbacks", "guardians", "phillies",
+                    "mariners", "twins", "orioles",
+                )
+                is_sports = int(any(k in combined for k in _SPORTS_KW))
+                step = "step2_handler" if "handler_step2" in (metadata_json or "") else "step1_pipeline"
+                insert_shadow_trade(
+                    signal_id=signal_id,
+                    snapshot_id=None,
+                    condition_id=condition_id,
+                    instrument_id=None,
+                    side=side or "BUY",
+                    entry_price=0.0,
+                    position_size_usd=position_size_usd,
+                    whale_name=whale_name,
+                    whale_address=whale_address,
+                    market_title=market_title,
+                    category=category,
+                    edge_score=edge_score,
+                    confidence=confidence,
+                    signal_type=signal_type or "COPY",
+                    entry_timestamp=timestamp,
+                    config_version=config_version,
+                    is_sports=is_sports,
+                    block_reason=reject_reason,
+                    handler_step=step,
+                    metadata_json=metadata_json,
+                )
+            except Exception:
+                pass  # Don't let shadow ledger errors affect the primary path
+
         return True
 
     except Exception:
