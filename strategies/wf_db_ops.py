@@ -109,6 +109,60 @@ def _ensure_db_schema(conn: sqlite3.Connection) -> None:
     # Non-unique index: same whale can re-enter same market after exiting (different trade_id each time)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_whale_condition ON trades(whale_name, condition_id)")
 
+
+def ensure_decision_snapshots_table(db_path: Optional[Path] = None) -> None:
+    """Create the decision_snapshots table if it does not exist.
+
+    Phase 0 observability: logs every signal decision (passed/failed gates)
+    so the signal funnel can be analyzed offline without relying on in-process
+    log parsing.
+    """
+    if db_path is None:
+        db_path = Path(__file__).parent.parent / "research" / "trades.db"
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS decision_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                signal_id TEXT,
+                source TEXT,
+                category TEXT,
+                market_title TEXT,
+                condition_id TEXT,
+                whale_name TEXT,
+                whale_address TEXT,
+                signal_type TEXT,
+                edge_score REAL,
+                whale_wr REAL,
+                whale_sample_size INTEGER,
+                confidence REAL,
+                side TEXT,
+                passed_category_filter INTEGER DEFAULT -1,
+                passed_quarantine INTEGER DEFAULT -1,
+                passed_blacklist INTEGER DEFAULT -1,
+                passed_edge_threshold INTEGER DEFAULT -1,
+                passed_fade_eligibility INTEGER DEFAULT -1,
+                passed_risk_manager INTEGER DEFAULT -1,
+                passed_execution_checks INTEGER DEFAULT -1,
+                passed_position_limits INTEGER DEFAULT -1,
+                passed_pnl_gate INTEGER DEFAULT -1,
+                passed_correlation_gate INTEGER DEFAULT -1,
+                passed_capital_pool INTEGER DEFAULT -1,
+                final_decision TEXT,
+                reject_reason TEXT,
+                position_size_usd REAL,
+                config_version TEXT,
+                shadow_mode INTEGER DEFAULT 0,
+                metadata_json TEXT
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def migrate_trades_db(db_path: Optional[Path] = None) -> bool:
     """Migrate trades database to add Phase 1 validation columns.
 
