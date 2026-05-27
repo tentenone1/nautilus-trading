@@ -112,7 +112,7 @@ from strategies.wf_position_persistence import (
     save_daily_state,
 )
 from strategies.wf_sports import is_sports_market, get_market_event_time, should_exit_for_sports
-from strategies.wf_db_ops import log_trade_to_db, recover_open_positions, update_trade_latency_fields
+from strategies.wf_db_ops import log_trade_to_db, recover_open_positions, update_trade_latency_fields, ensure_decision_snapshots_table
 from strategies.wf_signal_proc import scan_whale_positions
 from strategies.llm_scorer import llm_score_signal
 from strategies.signal_pipeline import SignalPipeline
@@ -306,6 +306,10 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
     # MiniMax API key for LLM scoring (llm_score_signal). Load from env if not set.
     minimaxi_api_key: str = ""
 
+    # Market exclusion list: market IDs in this list are skipped by whale_follower
+    # and by the autoresearch signal pipeline. Populated at runtime or via config.
+    ignored_markets: list[str] = []
+
     # Backward compat: allow single instrument_id
     @property
     def instrument_id(self) -> InstrumentId:
@@ -443,6 +447,13 @@ class WhaleFollower(Strategy):
         # Load whale intelligence data
         self._whale_intel = WhaleIntelligence()
         self.log.info(f"Loaded {len(self._whale_intel._intel)} whale intelligence profiles")
+
+        # Ensure decision_snapshots table exists before any signal processing
+        try:
+            ensure_decision_snapshots_table()
+            self.log.info("DecisionSnapshot table ensured (Phase 0 observability)")
+        except Exception as e:
+            self.log.warning(f"Could not ensure decision_snapshots table: {e}")
 
         # ── Initialize Signal Pipeline + Risk Manager ──────────────────
         self._pipeline = SignalPipeline(
@@ -748,14 +759,14 @@ class WhaleFollower(Strategy):
                     f"from {len(self._tracker.whales)} tracked whales"
                 )
         
-            for signal in signals:
+            for sig in signals:
                 if self._trades_this_scan >= self.config.max_trades_per_scan:
                     self.log.info(
                         f"Scan trade limit reached ({self.config.max_trades_per_scan}), "
                         f"skipping {len(signals) - self._trades_this_scan} remaining signals"
                     )
                     break
-                self._on_signal(signal)
+                self._on_signal(sig)
                 self._trades_this_scan += 1  # Track trades processed
         except Exception as e:
             import traceback
@@ -807,7 +818,7 @@ class WhaleFollower(Strategy):
         try:
             signals = self._tracker.detect_large_trades(self._trade_buffer)
             self._trade_buffer.clear()
-            for signal in signals:
+            for sig in signals:
                 # ── Phase 1: WHALE_TRADE_DETECTED event ──────────────────────────────────────
                 # Emit event when whale action is detected from trade buffer
                 signal_id = str(uuid.uuid4())
@@ -820,17 +831,17 @@ class WhaleFollower(Strategy):
                             event_type=EventType.WHALE_TRADE_DETECTED,
                             payload={
                                 "signal_id": signal_id,
-                                "whale_name": signal.whale_name,
-                                "whale_address": getattr(signal, 'whale_address', ''),
-                                "market_title": getattr(signal, 'market_title', '')[:80],
-                                "market_category": getattr(signal, 'market_category', ''),
-                                "side": signal.side,
-                                "target_price": float(getattr(signal, 'target_price', 0.5)),
-                                "suggested_size_usd": float(getattr(signal, 'suggested_size_usd', 0)),
-                                "confidence": float(getattr(signal, 'confidence', 0)),
-                                "edge_score": float(getattr(signal, 'edge_score', 0)),
-                                "condition_id": signal.condition_id[:50],
-                                "signal_source": signal.source.value if hasattr(signal.source, 'value') else str(signal.source),
+                                "whale_name": sig.whale_name,
+                                "whale_address": getattr(sig, 'whale_address', ''),
+                                "market_title": getattr(sig, 'market_title', '')[:80],
+                                "market_category": getattr(sig, 'market_category', ''),
+                                "side": sig.side,
+                                "target_price": float(getattr(sig, 'target_price', 0.5)),
+                                "suggested_size_usd": float(getattr(sig, 'suggested_size_usd', 0)),
+                                "confidence": float(getattr(sig, 'confidence', 0)),
+                                "edge_score": float(getattr(sig, 'edge_score', 0)),
+                                "condition_id": sig.condition_id[:50],
+                                "signal_source": sig.source.value if hasattr(sig.source, 'value') else str(sig.source),
                                 "ts_mono_ns": whale_trade_ts,
                             },
                             correlation_id=signal_id,
@@ -838,13 +849,13 @@ class WhaleFollower(Strategy):
                             strategy_id="whale_follower",
                             run_id=self._validation_run_id,
                         )
-                        self.log.debug(f"Validation: WHALE_TRADE_DETECTED {signal_id[:8]}... ({signal.whale_name})")
+                        self.log.debug(f"Validation: WHALE_TRADE_DETECTED {signal_id[:8]}... ({sig.whale_name})")
                     except Exception as e:
                         self.log.warning(f"Validation event emission failed: {e}")
-                
+
                 # Pass signal_id to _on_signal for correlation
-                signal._validation_signal_id = signal_id
-                self._on_signal(signal)
+                sig._validation_signal_id = signal_id
+                self._on_signal(sig)
         except Exception as e:
             self.log.error(f"Trade processing error: {e}")
 
@@ -888,6 +899,7 @@ class WhaleFollower(Strategy):
         entry_reason: str = "", is_fade: bool = False,
         signal_source: str = "known_whale",
         _validation_signal_id: str = "", _validation_snapshot_id: str = "",
+        _decision_snapshot: dict | None = None,
     ) -> None:
         """Delegate position entry to PositionManager."""
         if self._position_mgr is not None:
@@ -901,6 +913,7 @@ class WhaleFollower(Strategy):
                 signal_source=signal_source,
                 _validation_signal_id=_validation_signal_id,
                 _validation_snapshot_id=_validation_snapshot_id,
+                _decision_snapshot=_decision_snapshot,
             )
         else:
             self.log.warning("PositionManager not initialized, skipping entry")
