@@ -118,10 +118,10 @@ class DynamicWhaleIntel:
             rows = conn.execute("""
                 SELECT whale_name,
                        COUNT(*) as trades,
-                       ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
-                       ROUND(SUM(actual_pnl), 2) as total_pnl
+                       ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
+                       ROUND(SUM(realized_pnl), 2) as total_pnl
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
                   AND whale_name != 'autoresearch_llm'
                 GROUP BY whale_name
@@ -140,10 +140,10 @@ class DynamicWhaleIntel:
             recent_rows = conn.execute("""
                 SELECT whale_name,
                        COUNT(*) as trades,
-                       ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
-                       ROUND(SUM(actual_pnl), 2) as total_pnl
+                       ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
+                       ROUND(SUM(realized_pnl), 2) as total_pnl
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
                   AND whale_name != 'autoresearch_llm'
                   AND timestamp >= ?
@@ -161,10 +161,10 @@ class DynamicWhaleIntel:
             cat_rows = conn.execute("""
                 SELECT whale_name, category,
                        COUNT(*) as trades,
-                       ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
-                       ROUND(SUM(actual_pnl), 2) as total_pnl
+                       ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
+                       ROUND(SUM(realized_pnl), 2) as total_pnl
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
                   AND whale_name != 'autoresearch_llm'
                   AND category IS NOT NULL

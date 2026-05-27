@@ -37,6 +37,8 @@ from strategies.wf_constants import (
     SPORTS_WHITELIST_PATTERNS,
 )
 from strategies.wf_position_checks import check_position_limits, check_correlation_gate, trigger_kill_switch
+from strategies.wf_db_ops import insert_decision_snapshot
+from strategies.wf_constants import SHADOW_MODE
 from strategies.wf_position_persistence import save_open_positions, load_daily_state, save_daily_state
 
 # Validation integration (graceful degradation)
@@ -171,6 +173,8 @@ class PositionManager:
         signal_source: str = "known_whale",
         _validation_signal_id: str = "",
         _validation_snapshot_id: str = "",
+        _decision_snapshot: dict | None = None,
+        _pipeline_passed: bool = False,
     ) -> None:
         """Enter Kelly-sized position with risk checks and capital management."""
         s = self._s
@@ -183,19 +187,39 @@ class PositionManager:
                 s._kill_switch_breached = False
             else:
                 s.log.warning(f"KILL_SWITCH active ({elapsed:.0f}s/300s) - rejecting signal for {market_title[:40]}")
+                if _decision_snapshot is not None:
+                    _decision_snapshot["passed_risk_manager"] = 0
+                    _decision_snapshot["final_decision"] = "REJECT"
+                    _decision_snapshot["reject_reason"] = "kill_switch_active"
+                    insert_decision_snapshot(**_decision_snapshot)
                 return
 
         inst_id = instrument_id or s.config.instrument_id
         instrument = s.cache.instrument(inst_id)
         if instrument is None:
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "instrument_not_found"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         if price < MIN_ENTRY_PRICE:
             s.log.info(f"MIN_PRICE_REJECTED | {market_title[:50]} | price=${price:.4f} < ${MIN_ENTRY_PRICE} | whale={whale_name}")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "price_below_minimum"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         if confidence < 0.15:
             s.log.info(f"REJECT confidence={confidence:.2f} < 0.15 | {inst_id}")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "confidence_below_minimum"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         # Sports market defense-in-depth: block whale-following positions in sports.
@@ -220,22 +244,42 @@ class PositionManager:
                     f"SPORTS_POSITION_BLOCK: rejecting whale-following position in sports market | "
                     f"{market_title[:50]} | source={signal_source}"
                 )
+                if _decision_snapshot is not None:
+                    _decision_snapshot["passed_quarantine"] = 0
+                    _decision_snapshot["final_decision"] = "REJECT"
+                    _decision_snapshot["reject_reason"] = "sports_position_block"
+                    insert_decision_snapshot(**_decision_snapshot)
                 return
 
         open_positions = s.cache.positions_open(instrument_id=inst_id)
         if open_positions and open_positions[0].quantity.as_double() != 0:
             s.log.info(f"Already have position in {inst_id}, skipping")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "duplicate_position"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         inst_key = str(inst_id)
         if inst_key in s._open_positions:
             existing = s._open_positions[inst_key]
             s.log.info(f"Position already tracked: {existing['whale_name']} | {inst_key[:50]}... | held {time.time()-existing['entry_time']:.0f}s, skipping")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "already_tracked"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         last_exit = s._last_exit_time.get(str(inst_id), 0)
         if time.time() - last_exit < RE_ENTRY_COOLDOWN_SECS:
             s.log.info(f"Re-entry cooldown for {inst_id}: {time.time() - last_exit:.0f}s < {RE_ENTRY_COOLDOWN_SECS}s, skipping")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "reentry_cooldown"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         USDC_e = Currency.from_str("USDC.e")
@@ -245,6 +289,11 @@ class PositionManager:
             account = s.portfolio.account()
         if account is None:
             s.log.warning("Cash account not found - skipping order")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "no_account"
+                insert_decision_snapshot(**_decision_snapshot)
             return
         available = account.balance_free(USDC_e).as_double()
 
@@ -253,11 +302,21 @@ class PositionManager:
         if size_usd <= 0:
             wr_note = f" (whale_wr={whale_win_rate:.0%})" if whale_win_rate else " (fixed_wr=55%)"
             s.log.info(f"No Kelly edge{wr_note}, skipping")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "no_kelly_edge"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         strategy = s._strategies.get(market_category.lower())
         if strategy is not None and not strategy.can_accept_position():
             s.log.info(f"({market_category}) can_accept_position=False - cap reached, skipping: {whale_name} | {inst_key[:50]}...")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_position_limits"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "position_cap_reached"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         size_usd = s._adjust_size_for_liquidity(size_usd, inst_id)
@@ -275,6 +334,11 @@ class PositionManager:
                 granted = strategy.request_fade_capital(size_usd)
                 if granted <= 0:
                     s.log.info(f"({market_category}) FADE pool exhausted - request_fade_capital(${size_usd:.0f}) returned ${granted:.0f}, skipping: {whale_name}")
+                    if _decision_snapshot is not None:
+                        _decision_snapshot["passed_capital_pool"] = 0
+                        _decision_snapshot["final_decision"] = "REJECT"
+                        _decision_snapshot["reject_reason"] = "capital_pool_exhausted"
+                        insert_decision_snapshot(**_decision_snapshot)
                     return
             else:
                 granted = strategy.request_capital(size_usd)
@@ -288,6 +352,11 @@ class PositionManager:
 
         if size_usd > available:
             s.log.info(f"Size ${size_usd:,.2f} exceeds available ${available:,.2f}, skipping")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "insufficient_balance"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         allowed, reason = check_position_limits(
@@ -305,6 +374,11 @@ class PositionManager:
             )
             s._kill_switch_breached = True
             s._kill_switch_time = time.time()
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_position_limits"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = reason or "position_limits_failed"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         # ── Phase B3: 48h P&L Gate ─────────────────────────────────────────────
@@ -391,6 +465,11 @@ class PositionManager:
             )
             s._kill_switch_breached = True
             s._kill_switch_time = time.time()
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_pnl_gate"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "48h_pnl_gate"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         # ── Phase B4: Correlation Gate ──────────────────────────────────────────
@@ -411,6 +490,11 @@ class PositionManager:
             max_positions = s.config.max_open_positions
             if open_count >= max_positions:
                 s.log.info(f"Max positions reached ({open_count}/{max_positions}), skipping")
+                if _decision_snapshot is not None:
+                    _decision_snapshot["passed_position_limits"] = 0
+                    _decision_snapshot["final_decision"] = "REJECT"
+                    _decision_snapshot["reject_reason"] = "max_positions_reached"
+                    insert_decision_snapshot(**_decision_snapshot)
                 return
 
         if available < LOW_CASH_ALERT_PCT * s.config.bankroll:
@@ -419,6 +503,11 @@ class PositionManager:
         qty = instrument.make_qty(Decimal(str(size_usd / price)), round_down=True)
         if qty.as_decimal() <= 0:
             s.log.debug("Calculated quantity is zero, skipping order entry")
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "quantity_zero"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         order = s.order_factory.market(
@@ -453,6 +542,28 @@ class PositionManager:
         set_fill_price(str(inst_id), price)
 
         whale_note = f" (following ${whale_amount:,.0f} whale)" if whale_amount else ""
+
+        # ── J1 CRITICAL: SHADOW_MODE enforcement at the single execution boundary ──
+        # This is the only enforcement point. All prior pipeline gates have passed.
+        # If SHADOW_MODE is True, record as SHADOW_TRADE (not REJECT) so the would-
+        # have-traded signal is tracked for resolution scoring without submitting any
+        # paper order. passed_execution_checks=1 only when _pipeline_passed=True
+        # (signal passed all pipeline gates + all execution checks). When False,
+        # the signal failed a prior pipeline gate — mark accordingly for telemetry.
+        if SHADOW_MODE:
+            s.log.warning(
+                f"[SHADOW MODE] Blocking order submission | "
+                f"{side.name} {qty.as_decimal():.0f} shares @ {price:.4f} "
+                f"= ${size_usd:,.2f} | {market_title[:50]}"
+            )
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 1 if _pipeline_passed else 0
+                _decision_snapshot["final_decision"] = "SHADOW_TRADE"
+                _decision_snapshot["reject_reason"] = "shadow_mode_block"
+                _decision_snapshot["position_size_usd"] = size_usd
+                insert_decision_snapshot(**_decision_snapshot)
+            return
+
         s.log.info(f"ENTER {side.name}: {qty.as_decimal():.0f} shares @ {price:.4f} = ${size_usd:,.2f}{whale_note} | {inst_id}")
         s.submit_order(order)
         s._trades_this_scan += 1

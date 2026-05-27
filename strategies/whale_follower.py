@@ -697,11 +697,18 @@ class WhaleFollower(Strategy):
         
         # Buffer trades >= TRADE_BUFFER_SIZE_THRESHOLD (lowered from $1000 for better responsiveness)
         if usd >= TRADE_BUFFER_SIZE_THRESHOLD:
+            # Extract condition_id and token_id from instrument_id (format: {condition_id}-{token_id}.POLYMARKET)
+            inst_str = str(tick.instrument_id)
+            parts = inst_str.split("-")
+            condition_id = parts[0] if len(parts) > 0 else ""
+            token_id = parts[1].split(".")[0] if len(parts) > 1 else ""
             self._trade_buffer.append({
                 "size": size,
                 "price": price,
                 "side": tick.aggressor_side.name,
                 "timestamp": time.time(),
+                "conditionId": condition_id,
+                "token_id": token_id,
             })
             # Process buffer every TRADE_BUFFER_FLUSH_COUNT trades (was 10)
             if len(self._trade_buffer) >= TRADE_BUFFER_FLUSH_COUNT:
@@ -1111,9 +1118,26 @@ class WhaleFollower(Strategy):
             self._signal_bridge.check_autoresearch_signals()
 
     def _check_sybil_signals(self) -> None:
-        """Delegate sybil signal checking to SignalBridge."""
+        """Delegate sybil signal checking to SignalBridge AND scan DB for new signals (J2)."""
+        # Bridge: check queue-based sybil signals
         if self._signal_bridge is not None:
             self._signal_bridge.check_sybil_signals()
+
+        # J2 Fix: Also scan sybil_signals DB table for non-sports signals missed by the bridge.
+        # The sybil detector writes to sybil_signals table (950+ rows) but nothing was feeding
+        # them into the pipeline. scan_sybil_signals() bridges that gap.
+        if self._tracker is not None:
+            try:
+                sybil_signals = self._tracker.scan_sybil_signals(max_age_hours=4)
+                if sybil_signals:
+                    self.log.info(
+                        f"SYBIL_DB_SCAN: {len(sybil_signals)} non-sports sybil signals "
+                        f"found, routing to pipeline"
+                    )
+                    for sig in sybil_signals:
+                        self._on_signal(sig)
+            except Exception as e:
+                self.log.warning(f"_check_sybil_signals: tracker scan failed: {e}")
 
     def _validate_sybil_signal_price(self, signal: dict) -> tuple[bool, str]:
         """Delegate sybil price validation to SignalBridge."""

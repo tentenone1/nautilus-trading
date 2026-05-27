@@ -39,12 +39,58 @@ def log(msg: str) -> None:
             f.write(line + "\n")
     except OSError:
         pass
+
+
+# ── Ignored Markets ─────────────────────────────────────────────────────────────
+
+IGNORED_MARKETS_FILE = os.path.join(BASE_DIR, "research", "ignored_markets.json")
+
+
+def _load_ignored_markets() -> list[str]:
+    """Load ignored markets list from JSON file. Returns empty list on error."""
+    if not os.path.exists(IGNORED_MARKETS_FILE):
+        return []
+    try:
+        with open(IGNORED_MARKETS_FILE) as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data.get("ignored_markets", [])
+        if isinstance(data, list):
+            return data
+        return []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def is_excluded_market(market_id: str) -> bool:
+    """Returns True if market_id is in the ignored markets list, False otherwise.
+
+    The ignored markets list is persisted in research/ignored_markets.json and
+    synchronized with WhaleFollowerConfig.ignored_markets by the strategy at runtime.
+    """
+    return market_id in _load_ignored_markets()
+
+
 CLOB_MARKET_URL = "https://clob.polymarket.com/markets/{}"
 
 # ─── Quality Gates ─────────────────────────────────────────────────────────────
-CONFIDENCE_GATE = 0.65      # Minimum confidence for BUY to pass to execution
+CONFIDENCE_GATE = 0.50      # Minimum confidence for BUY to pass to execution (raised from 0.65)
 KELLY_MIN = 0.01            # 1% floor
 KELLY_MAX = 0.125           # 12.5% ceiling (matches whale_tiers.json max_position_pct)
+
+# Sports keywords — used to filter out sports markets before wasting API calls
+# on resolve_yes_token(). Sports signals will be quarantined at the handler anyway.
+BRIDGE_SPORTS_KEYWORDS = [
+    "nfl", "nba", "mlb", "nhl", "ncaa", "college football", "college basketball",
+    "soccer", "football", "basketball", "baseball", "hockey", "tennis", "golf",
+    "boxing", "mma", "ufc", "wwe", "f1", "formula 1", "nascar",
+    "super bowl", "world cup", "champions league", "premier league",
+    "playoffs", "stanley cup", "world series", "final four", "march madness",
+    " vs ", " vs.", "eagles", "49ers", "chiefs", "lakers", "celtics",
+    "warriors", "yankees", "dodgers", "red sox", "patriots",
+    "trail blazers", "spurs", "penguins", "stars", "wild",
+    "bucks", "thunder", "nuggets", "timberwolves", "knicks",
+]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -65,11 +111,12 @@ def fetch_market(condition_id: str) -> dict | None:
         return None
 
 
-def resolve_yes_token(condition_id: str) -> tuple[str, str] | None:
-    """Resolve condition_id to (token_id, outcome) for YES outcome.
+def resolve_yes_token(condition_id: str) -> tuple[str, str, str] | None:
+    """Resolve condition_id to (token_id, outcome, category) for YES outcome.
 
     Returns None if market can't be found or is inactive.
     Falls back to "Yes" outcome, or the first token if no "Yes" found.
+    Category is extracted from the market response and defaults to "general".
     """
     market = fetch_market(condition_id)
     if not market:
@@ -79,15 +126,17 @@ def resolve_yes_token(condition_id: str) -> tuple[str, str] | None:
     if not tokens:
         return None
 
+    market_category = (market.get("category") or "general").strip()
+
     # Prefer "Yes" outcome (case-insensitive)
     for t in tokens:
         outcome = (t.get("outcome") or "").strip().lower()
         if outcome == "yes":
-            return str(t["token_id"]), t["outcome"]
+            return str(t["token_id"]), t["outcome"], market_category
 
     # Fallback to first token
     t = tokens[0]
-    return str(t["token_id"]), t["outcome"]
+    return str(t["token_id"]), t["outcome"], market_category
 
 
 def load_state() -> dict[str, float]:
@@ -186,6 +235,22 @@ def main() -> int:
             state[make_signal_key(rec)] = time.time()
             continue
 
+        # Skip excluded markets (populated by whale_follower at runtime)
+        if is_excluded_market(cid):
+            log(f"Skipping excluded market: '{market[:50]}...'")
+            skipped += 1
+            state[make_signal_key(rec)] = time.time()
+            continue
+
+        # Skip sports markets — they'll be quarantined at the handler anyway.
+        # Filtering here saves an API call to resolve_yes_token().
+        market_lower = market.lower()
+        if any(kw in market_lower for kw in BRIDGE_SPORTS_KEYWORDS):
+            log(f"Skipping sports market: '{market[:50]}...'")
+            skipped += 1
+            state[make_signal_key(rec)] = time.time()
+            continue
+
         # Resolve YES token from Polymarket API
         token_info = resolve_yes_token(cid)
         if token_info is None:
@@ -194,12 +259,13 @@ def main() -> int:
             state[make_signal_key(rec)] = time.time()
             continue
 
-        token_id, outcome = token_info
+        token_id, outcome, market_category = token_info
 
         signal = {
             "condition_id": cid,
             "token_id": token_id,
             "outcome": outcome,
+            "market_category": market_category,  # Resolved from Polymarket CLOB API
             "side": "buy",
             "entry_price": entry_price,
             "confidence": confidence,

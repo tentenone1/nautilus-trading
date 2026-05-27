@@ -62,7 +62,34 @@ NOISE_TITLES: list[str] = ["highest temperature", "Bitcoin Up or Down", "Ethereu
 # ─── Quality Gates ─────────────────────────────────────────────────────────────
 KELLY_MIN = 0.01            # 1% floor
 KELLY_MAX = 0.125           # 12.5% ceiling (matches whale_tiers.json max_position_pct)
-CONFIDENCE_MIN = 0.65       # Minimum confidence for actionable signal
+CONFIDENCE_MIN = 0.50       # Minimum confidence for actionable signal (was 0.65 — lowered 2026-05-26)
+
+# Sports market filter — skip LLM evaluation for sports markets
+# (saves API calls; sports markets are quarantined downstream anyway)
+BRIDGE_SPORTS_KEYWORDS: list[str] = [
+    "nfl", "nba", "mlb", "nhl", "ncaa", "college football", "college basketball",
+    "soccer", "football", "basketball", "baseball", "hockey", "tennis", "golf",
+    "boxing", "mma", "ufc", "wwe", "f1", "formula 1", "nascar",
+    "super bowl", "world cup", "champions league", "premier league",
+    "playoffs", "stanley cup", "world series", "final four", "march madness",
+    " vs ", " vs.", "eagles", "49ers", "chiefs", "lakers", "celtics",
+    "warriors", "yankees", "dodgers", "red sox", "patriots",
+    "trail blazers", "spurs", "penguins", "stars", "wild",
+    "bucks", "thunder", "nuggets", "timberwolves", "knicks",
+    # Additional keywords (H2 fix — caught sports markets slipping through)
+    "phillies", "padres", "fifa", "athletics", "marlins", "orioles",
+    "rockies", "tigers", "royals", "rays", "mets", "brewers", "cubs",
+    "racing", "atlanta", "boston", "chicago", "houston",
+    "las vegas", "miami", "new york", "philadelphia", "san diego",
+    "san francisco", "seattle", "washington", "montreal", "toronto",
+    "vancouver", "phoenix", "detroit", "minneapolis",
+]
+
+
+def _is_sports_market(market_title: str) -> bool:
+    """Return True if market title matches any known sports keyword."""
+    lower = market_title.lower()
+    return any(kw in lower for kw in BRIDGE_SPORTS_KEYWORDS)
 
 
 class BridgeError(Exception):
@@ -541,12 +568,26 @@ def run_once(state: BridgeState, timeout_secs: int = RUN_TIMEOUT_SECS) -> list[d
             break
         
         market_name = det.get("market", "?")[:50]
+
+        # ── Sports pre-filter: skip LLM evaluation ─────────────────────────────────
+        # Sports markets are quarantined downstream; no point spending API calls on
+        # them here. Log and mark processed so they're not retried next cycle.
+        if _is_sports_market(market_name):
+            logger.info(
+                "SKIP_SPORTS | %s | sports keyword match — skipping LLM evaluation",
+                market_name,
+                extra={"market": market_name},
+            )
+            key = make_detection_key(det)
+            state.mark_processed(key, datetime.now(timezone.utc).isoformat())
+            continue
+
         logger.info("Analyzing: %s (%.1fs remaining)", market_name, remaining, extra={"market": market_name})
-        
+
         cid = det.get("condition_id", "")
         market_info = get_market_info(cid) if cid else None
         midpoints = check_midpoint(cid) if cid else {}
-        
+
         rec = analyze_market(det, market_info, midpoints)
         rec["timestamp"] = datetime.now(timezone.utc).isoformat()
         rec["condition_id"] = cid

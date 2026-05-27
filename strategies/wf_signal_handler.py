@@ -27,9 +27,13 @@ from nautilus_trader.model.identifiers import InstrumentId
 
 from strategies.signal_pipeline import PipelineResult
 from strategies.wf_constants import (
+    ACTIVE_CONFIG_VERSION,
     LIVE_ENTRY_PRICE_CAPS,
     BLOCKED_CATEGORIES,
+    SHADOW_MODE,
+    SPORTS_TELEMETRY_MODE,
 )
+from strategies.wf_db_ops import insert_decision_snapshot
 
 # Validation integration (graceful degradation)
 try:
@@ -123,11 +127,116 @@ class SignalHandler:
         """
         self.log.info(f"[DEBUG] _on_signal called for {signal.condition_id[:20]}... cond={signal.confidence:.2f}")
 
+        # ── Phase 0: DecisionSnapshot — create at signal entry ──
+        _snap = {
+            "signal_id": str(uuid.uuid4()),
+            "source": getattr(signal, 'source', 'unknown') or 'unknown',
+            "category": getattr(signal, 'market_category', '') or '',
+            "market_title": getattr(signal, 'market_title', '') or '',
+            "condition_id": getattr(signal, 'condition_id', '') or '',
+            "whale_name": getattr(signal, 'whale_name', '') or '',
+            "whale_address": getattr(signal, 'whale_address', '') or '',
+            "edge_score": 0.0,
+            "whale_wr": 0.0,
+            "whale_sample_size": 0,
+            "confidence": float(getattr(signal, 'confidence', 0) or 0),
+            "side": getattr(signal, 'side', 'BUY') or 'BUY',
+            "signal_type": "COPY",
+            "passed_category_filter": -1,
+            "passed_quarantine": -1,
+            "passed_blacklist": -1,
+            "passed_edge_threshold": -1,
+            "passed_fade_eligibility": -1,
+            "passed_risk_manager": -1,
+            "passed_execution_checks": -1,
+            "passed_position_limits": -1,
+            "passed_pnl_gate": -1,
+            "passed_correlation_gate": -1,
+            "passed_capital_pool": -1,
+            "final_decision": "REJECT",
+            "reject_reason": "",
+            "position_size_usd": 0.0,
+            "config_version": ACTIVE_CONFIG_VERSION,
+            "shadow_mode": 1 if SHADOW_MODE else 0,
+            "metadata_json": "",
+        }
+
         # ── Step 1: Pipeline signal filtering ─────────────────────────────────
         if self.pipeline is not None:
             pipeline_result = self.pipeline.process(signal, log=self.log)
 
+            # L2: Sports telemetry mode — write to decision_snapshots with
+            # reject_reason="sports_telemetry" so we can observe which sports signals
+            # would have passed all gates, then block execution as normal.
+            if getattr(pipeline_result, 'sports_telemetry_mode', False):
+                _snap["passed_category_filter"]  = pipeline_result.passed_category_filter
+                _snap["passed_quarantine"]      = pipeline_result.passed_quarantine
+                _snap["passed_blacklist"]        = pipeline_result.passed_blacklist
+                _snap["passed_edge_threshold"]   = pipeline_result.passed_edge_threshold
+                _snap["passed_fade_eligibility"] = pipeline_result.passed_fade_eligibility
+                _snap["edge_score"]              = pipeline_result.edge_score
+
+                # N1 FIX: preserve actual pipeline reject reason when should_trade=False.
+                # Previously all sports telemetry signals were tagged "sports_telemetry"
+                # regardless of which gate actually rejected them, losing diagnostic data.
+                if pipeline_result.should_trade:
+                    # Signal would have been ACCEPTED --
+                    # M2 fix: When SHADOW_MODE=True, DON'T write a REJECT snapshot
+                    # and DON'T return early. Let enter_position() write SHADOW_TRADE
+                    # so the would-have-traded signal is tracked in the shadow ledger.
+                    if SHADOW_MODE:
+                        _snap["final_decision"] = "SHADOW_TRADE"
+                        _snap["reject_reason"]  = "shadow_mode_block"
+                        meta = {"sports_telemetry": True, "would_have_traded": True, "shadow_trade": True}
+                        _snap["metadata_json"] = json.dumps(meta)
+                        # Fall through to Step 2 (sports quarantine) -- SHADOW_MODE
+                        # in enter_position() will write SHADOW_TRADE and skip execution.
+                    else:
+                        _snap["reject_reason"]  = "sports_telemetry"
+                        _snap["final_decision"] = "REJECT"
+                        meta = {"sports_telemetry": True, "would_have_traded": True}
+                        _snap["metadata_json"] = json.dumps(meta)
+                        insert_decision_snapshot(**_snap)
+                        self.log.info(
+                            f"SPORTS_TELEMETRY | sports signal logged to decision_snapshots | "
+                            f"whale={signal.whale_name} | conf={signal.confidence:.0%} | "
+                            f"edge={pipeline_result.edge_score:.3f} | "
+                            f"reject_reason={pipeline_result.reject_reason} | "
+                            f"would_have_traded={pipeline_result.should_trade}"
+                        )
+                        return   # block execution, observation only
+                else:
+                    # Signal was rejected by a real gate -- preserve the actual reason
+                    _snap["reject_reason"]  = pipeline_result.reject_reason
+                    _snap["final_decision"] = "REJECT"
+                    meta = {
+                        "sports_telemetry": True,
+                        "would_have_traded": False,
+                        "telemetry_tagged": True,
+                    }
+                    _snap["metadata_json"] = json.dumps(meta)
+                    insert_decision_snapshot(**_snap)
+                    self.log.info(
+                        f"SPORTS_TELEMETRY | sports signal logged to decision_snapshots | "
+                        f"whale={signal.whale_name} | conf={signal.confidence:.0%} | "
+                        f"edge={pipeline_result.edge_score:.3f} | "
+                        f"reject_reason={pipeline_result.reject_reason} | "
+                        f"would_have_traded={pipeline_result.should_trade}"
+                    )
+                    return   # block execution, observation only
+
+
             if not pipeline_result.should_trade:
+                # Copy gate results and record rejection
+                _snap["passed_category_filter"] = pipeline_result.passed_category_filter
+                _snap["passed_quarantine"]      = pipeline_result.passed_quarantine
+                _snap["passed_blacklist"]       = pipeline_result.passed_blacklist
+                _snap["passed_edge_threshold"]   = pipeline_result.passed_edge_threshold
+                _snap["passed_fade_eligibility"]= pipeline_result.passed_fade_eligibility
+                _snap["edge_score"]              = pipeline_result.edge_score
+                _snap["reject_reason"]            = pipeline_result.reject_reason
+                _snap["final_decision"]           = "REJECT"
+                insert_decision_snapshot(**_snap)
                 return
 
             edge_val = pipeline_result.edge_score
@@ -135,6 +244,8 @@ class SignalHandler:
             if pipeline_result.side_flip:
                 signal.side = pipeline_result.side
             tier = pipeline_result.tier
+            if pipeline_result.is_fade:
+                _snap["signal_type"] = "FADE"
             # Store whale_type on strategy for state_manager DB logging
             self._s._last_whale_type = getattr(pipeline_result, 'whale_type', '')
             tier_config = self.whale_tiering.get_tier_config(
@@ -202,11 +313,55 @@ class SignalHandler:
                     f"whale={signal.whale_name} | {signal.condition_id[:30]}... | "
                     f"is_fade={is_fade} | source={signal_source} | reason={block_reason}"
                 )
+                # N2 FIX: write decision_snapshot before blocking in Step 2 quarantine.
+                # Previously ~90% of sports whale signals were blocked here with NO
+                # snapshot, making them invisible to telemetry.
+                #
+                # M2 fix: If the signal passed all pipeline gates (should_trade=True)
+                # but gets blocked by the handler quarantine, write it as SHADOW_TRADE
+                # so the would-have-traded signal is tracked in the shadow ledger.
+                _pipeline_passed = (
+                    self.pipeline is not None
+                    and getattr(pipeline_result, 'should_trade', False)
+                )
+                if SHADOW_MODE and _pipeline_passed:
+                    _snap["final_decision"] = "SHADOW_TRADE"
+                    _snap["reject_reason"]  = "shadow_mode_block"
+                    _snap["metadata_json"] = json.dumps({
+                        "sports_telemetry": True,
+                        "would_have_traded": True,
+                        "shadow_trade": True,
+                        "handler_step2": True,
+                        "block_reason": block_reason,
+                    })
+                    insert_decision_snapshot(**_snap)
+                    self.log.info(
+                        f"SHADOW_TRADE | sports signal passed pipeline, blocked at handler | "
+                        f"whale={signal.whale_name} | reason={block_reason}"
+                    )
+                    return
+                if SPORTS_TELEMETRY_MODE:
+                    _snap["reject_reason"]  = "sports_handler_quarantine"
+                    _snap["final_decision"] = "REJECT"
+                    _snap["metadata_json"] = json.dumps({
+                        "sports_telemetry": True,
+                        "handler_step2": True,
+                        "block_reason": block_reason,
+                    })
+                    insert_decision_snapshot(**_snap)
+                    self.log.info(
+                        f"SPORTS_TELEMETRY | Step 2 quarantine snapshot written | "
+                        f"whale={signal.whale_name} | reason={block_reason}"
+                    )
                 return
 
         # ── Step 3: Risk checks (RiskManager if available) ────────────────────
         if not self.config.auto_trade:
             self.log.debug("Auto-trade disabled, skipping signal execution")
+            _snap["passed_risk_manager"] = 0
+            _snap["final_decision"]       = "REJECT"
+            _snap["reject_reason"]         = "auto_trade_disabled"
+            insert_decision_snapshot(**_snap)
             return
 
         if self.risk_manager is not None and self.risk_state is not None:
@@ -224,6 +379,10 @@ class SignalHandler:
                 return
             if self._s._kill_switch_breached:
                 self.log.warning("KILL_SWITCH active - rejecting signal")
+                _snap["passed_risk_manager"] = 0
+                _snap["final_decision"]       = "REJECT"
+                _snap["reject_reason"]         = "kill_switch_active"
+                insert_decision_snapshot(**_snap)
                 return
 
         # ── Step 3: Fade concurrency check ────────────────────────────────────
@@ -232,6 +391,10 @@ class SignalHandler:
                 f"FADE concurrency limit reached ({len(self.fade_positions)}/{self.fade_max_concurrent}), "
                 f"skipping: {signal.whale_name}"
             )
+            _snap["passed_risk_manager"] = 0
+            _snap["final_decision"]       = "REJECT"
+            _snap["reject_reason"]         = "fade_concurrency_limit"
+            insert_decision_snapshot(**_snap)
             return
 
         # ── Step 4: Kelly sizing (tier-based + whale intel) ────────────────────
@@ -296,6 +459,10 @@ class SignalHandler:
 
         if mc_lower in BLOCKED_CATEGORIES:
             self.log.info(f"BLOCKED category={mc_lower} | {signal.condition_id[:50]}")
+            _snap["passed_category_filter"] = 0
+            _snap["final_decision"] = "REJECT"
+            _snap["reject_reason"] = "blocked_category"
+            insert_decision_snapshot(**_snap)
             return
 
         if mc_lower in LIVE_ENTRY_PRICE_CAPS or mc_lower in ("politics", "crypto", "sports", "entertainment"):
@@ -311,6 +478,10 @@ class SignalHandler:
                     f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} - "
                     f"live trading blocked for this category"
                 )
+                _snap["passed_category_filter"] = 0
+                _snap["final_decision"] = "REJECT"
+                _snap["reject_reason"] = "paper_only_category"
+                insert_decision_snapshot(**_snap)
                 return
             self.log.info(
                 f"PAPER_ONLY category={mc_lower} | {signal.condition_id[:50]} - sandbox fill"
@@ -338,12 +509,31 @@ class SignalHandler:
                 f"LIVE_ELIGIBLE category={mc_lower} | {signal.condition_id[:50]}"
             )
 
+        # ── Step 6.5: Missing market data gate ───────────────────────────────
+        # Unknown whale signals (e.g. from detect_large_trades) can arrive with empty
+        # condition_id and market_title — these cannot be traded as we don't know which
+        # market they belong to. Reject early with a clear reason.
+        if not signal.condition_id or not signal.condition_id.strip():
+            self.log.info(
+                f"MISSING_MARKET_DATA: rejecting signal with empty condition_id | "
+                f"whale={signal.whale_name} | market_title={signal.market_title[:40]}"
+            )
+            _snap["passed_execution_checks"] = 0
+            _snap["final_decision"] = "REJECT"
+            _snap["reject_reason"] = "missing_market_data"
+            insert_decision_snapshot(**_snap)
+            return
+
         # ── Step 7: Ensure instrument & determine side ────────────────────────
         target_inst = self._ensure_instrument_for_signal(
             signal.condition_id, signal.token_id, signal.outcome
         )
         if target_inst is None:
             self.log.info(f"Could not get instrument for {signal.market_title[:40]}, skipping")
+            _snap["passed_execution_checks"] = 0
+            _snap["final_decision"]           = "REJECT"
+            _snap["reject_reason"]            = "instrument_not_found"
+            insert_decision_snapshot(**_snap)
             return
 
         # Parse compound sides: "BUY YES", "BUY NO", "SELL YES", "SELL NO"
@@ -459,6 +649,11 @@ class SignalHandler:
             signal_source=getattr(signal, 'source', 'known_whale'),
             _validation_signal_id=validation_signal_id,
             _validation_snapshot_id=snapshot_id,
+            _decision_snapshot=_snap,
+            _pipeline_passed=(
+                self.pipeline is not None
+                and getattr(pipeline_result, 'should_trade', False)
+            ),
         )
 
         self._s._update_gap_state(signal)

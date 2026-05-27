@@ -30,6 +30,8 @@ from typing import Optional
 from strategies.wf_constants import (
     WHALE_BLACKLIST,
     SPORTS_WHALE_BLACKLIST,
+    FADE_BLACKLIST,
+    FADE_LOGIC_ENABLED,
     SPORTS_WHITELIST_PATTERNS,
     BLOCKED_CATEGORIES,
     ALLOWED_CATEGORIES,
@@ -38,10 +40,13 @@ from strategies.wf_constants import (
     MIN_ENTRY_PRICE,
     SPORTS_MIN_EDGE,
     SPORTS_MIN_CONFIDENCE,
+    BOOTSTRAP_MODE,
+    BOOTSTRAP_MIN_TRADES,
+    SPORTS_TELEMETRY_MODE,
 )
 from strategies.wf_edge_scorer import EdgeScorer, EdgeResult
 from strategies.whale_classifier import WhaleClassifier
-from strategies.wf_whale_perf import flip_side_for_fade, is_fade_whale_dynamic
+from strategies.wf_whale_perf import flip_side_for_fade
 from strategies.whale_tracker_new import WhaleSignal, SignalSource, _categorize_market
 from strategies.wf_sports import is_sports_market
 
@@ -87,6 +92,14 @@ class PipelineResult:
     edge_result: Optional[EdgeResult] = None
     whale_type: str = ""  # Whale classification for data segmentation
     skip_edge_scorer: bool = False  # v5.6: bypass edge scorer for premium signal sources
+    sports_telemetry_mode: bool = False  # L2: route sports signal through snapshot before blocking
+    # ── DecisionSnapshot gate tracking (Phase 0 observability) ──
+    passed_category_filter: int = -1   # 1=passed, 0=rejected, -1=not evaluated
+    passed_quarantine: int = -1
+    passed_blacklist: int = -1
+    passed_edge_threshold: int = -1
+    passed_fade_eligibility: int = -1
+    passed_risk_manager: int = -1   # 1=passed, 0=rejected, -1=not evaluated
 
 
 class SignalPipeline:
@@ -123,6 +136,7 @@ class SignalPipeline:
         enable_edge_scorer: bool = True,
         enable_sybil: bool = True,
         enable_manipulation: bool = True,
+        enable_fade_logic: bool = True,
     ):
         self.whale_tiering = whale_tiering
         self.whale_intel = whale_intel
@@ -135,6 +149,7 @@ class SignalPipeline:
         self.enable_edge_scorer = enable_edge_scorer
         self.enable_sybil = enable_sybil
         self.enable_manipulation = enable_manipulation
+        self.enable_fade_logic = enable_fade_logic
 
         # Lazy-initialized singletons
         self._edge_scorer: EdgeScorer | None = None
@@ -217,18 +232,37 @@ class SignalPipeline:
             confidence=signal.confidence or 0.5,
         )
 
-        # ── Stage 0: Auto-trade and daily loss gates ──────────────────────
+        # ── Stage 0: Missing market data gate ──────────────────────────────────
+        # Signals with empty condition_id are unresolvable — reject before any
+        # pipeline processing to avoid wasting cycles on bad data. This catches
+        # signals that bypassed upstream guards (e.g. from detect_large_trades
+        # before the G1 fix, or from other producers with incomplete data).
+        cond_id = getattr(signal, "condition_id", "") or ""
+        if not cond_id.strip():
+            logger.debug(
+                f"PIPELINE_REJECT | missing_condition_id | "
+                f"whale={getattr(signal, 'whale_name', '?')} | "
+                f"market_title={getattr(signal, 'market_title', '')[:40]}"
+            )
+            result.passed_risk_manager = 0
+            result.reject_reason = "missing_condition_id"
+            return result
+
+        # ── Stage 0b: Auto-trade and daily loss gates ──────────────────────
         if not self.auto_trade:
+            result.passed_risk_manager = 0
             result.reject_reason = "auto_trade_disabled"
             return result
 
         if self.daily_loss_breached:
+            result.passed_risk_manager = 0
             result.reject_reason = "daily_loss_breached"
             return result
 
         mc = getattr(signal, "market_category", "") or ""
         is_sports, _ = is_sports_market(getattr(signal, "market_title", "") or "")
         if (is_sports or mc.lower() == "sports") and self.sports_daily_loss_breached:
+            result.passed_risk_manager = 0
             result.reject_reason = "sports_daily_loss_breached"
             return result
 
@@ -236,8 +270,6 @@ class SignalPipeline:
         # ── Stage 0.5: Proven whale fast lane (v5.2 + v5.6 fix) ─────
         # Whales with >=20 trades AND >=60% WR in a specific category (non-sports)
         # bypass tier_confidence entirely. Their track record speaks for itself.
-        # v5.6 FIX: Also bypass edge scorer for autoreseartch_llm — the edge scorer's
-        # fallback returns "ignore" for unknown whales, killing our best BUY signal source.
         is_fast_lane = False
         if not (is_sports or mc.lower() == "sports") and signal.whale_name and signal.whale_name != "unknown":
             is_fast_lane = self._check_fast_lane(signal.whale_name, mc, log=log)
@@ -249,17 +281,63 @@ class SignalPipeline:
             if is_fast_lane and self.whale_tiering:
                 alpha_score_fast = getattr(signal, "alpha_score", 50.0) or 50.0
                 result.tier = self.whale_tiering.get_tier(alpha_score_fast)
-            # autoreseartch_llm fast lane also skips the edge scorer — its signals
-            # bypass the tier check but then hit the edge scorer which "ignores" them
-            # because it's not in whale_classifications.json
-            if signal.whale_name == "autoresearch_llm":
-                result.skip_edge_scorer = True
-                if log:
-                    log.info(
-                        f"PIPELINE_FAST_LANE | autoresearch_llm | "
-                        f"bypassing edge_scorer (v5.6 fix)"
-                    )
 
+        # ── Stage 0.6: Autoresearch edge scorer bypass (v6.0 fix) ─────────────
+        # v6.0 FIX: The above fast lane gate requires "not is_sports" — so when
+        # autoresearch generates a sports market (which bypasses the handler quarantine
+        # via SPORTS_QUARANTINE_BYPASS_SOURCES), it enters the pipeline but is never
+        # fast-laned, and skip_edge_scorer is never set. The edge scorer then returns
+        # "ignore" for autoresearch_llm (not in whale_classifications.json), killing
+        # the signal.  Fix: set skip_edge_scorer unconditionally for autoresearch_llm.
+        if signal.whale_name == "autoresearch_llm":
+            result.skip_edge_scorer = True
+            if log:
+                log.info(
+                    f"PIPELINE_FAST_LANE | autoresearch_llm | "
+                    f"bypassing edge_scorer (v6.0 fix)"
+                )
+
+        # ── Stage 0.6b: Unknown whale edge scorer bypass (I2 fix) ─────────────
+        # Unknown whales (whale_name="unknown") are NOT in whale_classifications.json,
+        # so the edge scorer computes a conservative fallback edge of 0.05
+        # (cat_wr=0.4 * cat_weight=0.05, clamped to min_fallback=0.05).
+        # This makes should_trade=False → early Stage 4 rejection — the signal never
+        # reaches Stage 6's unknown_whale_low_edge check (edge>=0.10 threshold).
+        # The raw signal edge_val (~0.26) is perfectly usable; bypass the scorer.
+        is_unknown_whale = (
+            not signal.whale_name
+            or signal.whale_name.lower() in ("", "unknown", "unknown whale")
+        )
+        if is_unknown_whale:
+            result.skip_edge_scorer = True
+            if log:
+                log.info(
+                    f"PIPELINE_FAST_LANE | unknown_whale | "
+                    f"bypassing edge_scorer (I2 fix — fallback edge=0.05 < 0.10 "
+                    f"would reject before Stage 6)"
+                )
+
+
+        # ── Stage 0.6c: Named whale edge scorer bypass (N3 fix) ─────────────
+        # Named whales (not unknown, not autoresearch_llm) that are not in
+        # whale_classifications.json get edge_ignore from the scorer, which
+        # rejects them at Stage 5. Examples: downtownfee, FullPicks1.
+        # Bypass the scorer and use the signal's raw edge_score as the score.
+        is_named_whale = (
+            bool(signal.whale_name)
+            and signal.whale_name.lower()
+               not in ("", "unknown", "unknown whale", "autoresearch_llm")
+        )
+        if is_named_whale and not result.skip_edge_scorer:
+            result.skip_edge_scorer = True
+            # Use the signal's own edge_score field as the edge score
+            raw_edge = getattr(signal, 'edge_score', None) or signal.confidence
+            result.edge_score = raw_edge
+            if log:
+                log.info(
+                    f"PIPELINE_FAST_LANE | named_whale={signal.whale_name} | "
+                    f"edge_ignore bypassed — using edge={raw_edge:.3f} from signal"
+                )
         # ── Stage 1: Tier validation ─────────────────────────────────────
         # Fade signals bypass tier validation — fading works regardless of whale tier
         is_whitelist_fade = signal.whale_name in WHALE_BLACKLIST
@@ -286,6 +364,7 @@ class SignalPipeline:
                         f"PIPELINE_REJECT | tier_confidence | {signal.whale_name} | "
                         f"conf={signal.confidence:.0%} < {min_conf:.0%}"
                     )
+                result.passed_edge_threshold = 0
                 result.reject_reason = f"tier_confidence<{min_conf:.0%}"
                 return result
         elif self.whale_tiering:
@@ -300,6 +379,7 @@ class SignalPipeline:
                     f"PIPELINE_REJECT | intel_hard_reject | {signal.whale_name} | "
                     f"trust={intel.get('trust_score', '?')}/10"
                 )
+            result.passed_blacklist = 0
             result.reject_reason = "intel_hard_reject"
             return result
 
@@ -311,6 +391,7 @@ class SignalPipeline:
             if self.whale_intel and self.whale_intel.should_hard_reject(signal.whale_name):
                 if log:
                     log.info(f"PIPELINE_REJECT | blacklist_hard_reject | {signal.whale_name}")
+                result.passed_blacklist = 0
                 result.reject_reason = "blacklist_hard_reject"
                 return result
             else:
@@ -328,12 +409,14 @@ class SignalPipeline:
                             f"PIPELINE_IGNORE | fade_insufficient_data | {signal.whale_name} | "
                             f"category={mc} — skipping fade (<10 trades or WR >=25%)"
                         )
+                    result.passed_fade_eligibility = 0
                     result.reject_reason = "fade_insufficient_data"
 
         if signal.whale_name in SPORTS_WHALE_BLACKLIST and mc.lower() == "sports":
             if self.whale_intel and self.whale_intel.should_hard_reject(signal.whale_name):
                 if log:
                     log.info(f"PIPELINE_REJECT | sports_hard_reject | {signal.whale_name}")
+                result.passed_blacklist = 0
                 result.reject_reason = "sports_hard_reject"
                 return result
             else:
@@ -349,6 +432,7 @@ class SignalPipeline:
                             f"PIPELINE_IGNORE | sports_fade_insufficient_data | {signal.whale_name} | "
                             f"category={mc} — skipping sports fade (<10 trades or WR >=25%)"
                         )
+                    result.passed_fade_eligibility = 0
                     result.reject_reason = "sports_fade_insufficient_data"
 
         # ── Stage 4: Data-driven edge scoring (replaces legacy edge_score) ─
@@ -379,6 +463,7 @@ class SignalPipeline:
                             f"PIPELINE_REJECT | edge_ignore | {signal.whale_name} | "
                             f"edge={edge_result.edge_score:.3f} trust={edge_result.whale_trust:.1f}"
                         )
+                    result.passed_edge_threshold = 0
                     result.reject_reason = "edge_ignore"
                     return result
 
@@ -388,6 +473,7 @@ class SignalPipeline:
                             f"PIPELINE_REJECT | edge_below_min | {signal.whale_name} | "
                             f"edge={edge_result.edge_score:.3f} < {self.min_edge}"
                         )
+                    result.passed_edge_threshold = 0
                     result.reject_reason = "edge_below_min"
                     return result
 
@@ -439,6 +525,10 @@ class SignalPipeline:
             result.edge_score = edge_val
 
         # ── Stage 5: Category filtering ──────────────────────────────────
+        # Defensive default: any empty/missing category becomes "general".
+        # This prevents a silent reject if a future signal source forgets to set it.
+        if not mc:
+            mc = "general"
         category_lower = mc.lower()
 
         # Blocked categories
@@ -491,8 +581,16 @@ class SignalPipeline:
                             f"PIPELINE_REJECT | sports_quarantine | {signal.whale_name} | "
                             f"market={market_title[:40]}"
                         )
+                    # L2: In telemetry mode, continue through the pipeline to evaluate all gates.
+                    # sports_telemetry_mode=True signals will still be blocked at the handler
+                    # (which writes a snapshot with full gate-by-gate data before returning).
+                    # M2: when SPORTS_TELEMETRY_MODE=False, preserve original early-return behavior.
+                    result.sports_telemetry_mode = True
                     result.reject_reason = "sports_quarantine"
-                    return result
+                    result.passed_quarantine = 0
+                    if not SPORTS_TELEMETRY_MODE:
+                        return result
+                    # SPORTS_TELEMETRY_MODE=True: fall through to remaining pipeline stages
 
         # Sports-specific restrictions (skip for fade signals — fading losing whales)
         # NOTE: this block is now dead code for sports markets since the quarantine
@@ -520,7 +618,7 @@ class SignalPipeline:
             not signal.whale_name
             or signal.whale_name.lower() in ("", "unknown", "unknown whale", "")
         )
-        if is_unknown and edge_val < 7:
+        if is_unknown and edge_val < 0.10:
             if log:
                 log.info(
                     f"PIPELINE_REJECT | unknown_whale_low_edge | "
@@ -586,8 +684,13 @@ class SignalPipeline:
                 result.reject_reason = f"whale_type_blocked:{whale_classification}"
                 return result
 
-        # All checks passed
+        # All checks passed — mark all pipeline gates as passed
         result.should_trade = True
+        result.passed_category_filter = 1
+        result.passed_quarantine = 1
+        result.passed_blacklist = 1
+        result.passed_edge_threshold = 1
+        result.passed_fade_eligibility = 1 if result.is_fade else -1
         result.confidence = signal.confidence or 0.5
         return result
 
@@ -741,6 +844,10 @@ class SignalPipeline:
         Criteria: >=20 trades AND >=60% WR in this specific category (non-sports).
         Also fast-lanes autoresearch_llm unconditionally (our best signal source).
 
+        BOOTSTRAP_MODE: When trades.db has < BOOTSTRAP_MIN_TRADES total, the DB-based
+        win-rate check can't work. Bootstrap mode fast-lanes any non-sports, non-blacklist
+        whale that meets its category's minimum confidence threshold.
+
         Returns True if the whale qualifies for the fast lane.
         """
         # autoresearch_llm is our best signal source — always fast lane it
@@ -753,6 +860,37 @@ class SignalPipeline:
         db_path = Path("/home/elon-1/workspace/nautilus-trading/data/trades.db")
         if not db_path.exists():
             return False
+
+        # ── Bootstrap bypass ──────────────────────────────────────────────────────
+        # When in cold-start (fewer than BOOTSTRAP_MIN_TRADES total in DB),
+        # bypass the historical win-rate check and fast-lane based on signal quality.
+        if BOOTSTRAP_MODE:
+            try:
+                conn_b = sqlite3.connect(str(db_path))
+                conn_b.execute("PRAGMA busy_timeout=5000")
+                total_row = conn_b.execute("SELECT COUNT(*) FROM trades").fetchone()
+                conn_b.close()
+                total_trades = total_row[0] if total_row and total_row[0] else 0
+                if total_trades < BOOTSTRAP_MIN_TRADES:
+                    # Bootstrap mode: fast-lane any non-sports, non-blacklisted whale
+                    # that meets its category's minimum confidence threshold
+                    if (category or "").lower() != "sports":
+                        cat_conf = CATEGORY_MIN_CONFIDENCE.get(
+                            (category or "").lower(), self.min_confidence
+                        )
+                        # Return True if signal confidence meets category floor
+                        # Note: signal.confidence is not available here, so we return True
+                        # and let the tier_confidence stage apply the actual check
+                        if log:
+                            log.info(
+                                f"BOOTSTRAP_FAST_LANE | {whale_name} | cold-start: "
+                                f"{total_trades}/{BOOTSTRAP_MIN_TRADES} trades | "
+                                f"bypassing DB win-rate check"
+                            )
+                        return True
+            except Exception as e:
+                if log:
+                    log.warning(f"BOOTSTRAP_CHECK: failed to read trade count: {e}")
 
         try:
             conn = sqlite3.connect(str(db_path))

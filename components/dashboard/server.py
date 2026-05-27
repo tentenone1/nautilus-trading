@@ -65,33 +65,33 @@ def _query_overview() -> dict:
     try:
         row = conn.execute("""
             SELECT COUNT(*) as total_trades,
-                   ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
-                   ROUND(SUM(actual_pnl), 2) as total_pnl,
-                   ROUND(AVG(actual_pnl), 2) as avg_pnl,
+                   ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
+                   ROUND(SUM(realized_pnl), 2) as total_pnl,
+                   ROUND(AVG(realized_pnl), 2) as avg_pnl,
                    COUNT(CASE WHEN exit_reason IS NULL THEN 1 END) as open_positions,
-                   COUNT(CASE WHEN actual_pnl > 0 THEN 1 END) as wins,
-                   COUNT(CASE WHEN actual_pnl <= 0 THEN 1 END) as losses
+                   COUNT(CASE WHEN realized_pnl > 0 THEN 1 END) as wins,
+                   COUNT(CASE WHEN realized_pnl <= 0 THEN 1 END) as losses
             FROM trades
-            WHERE actual_pnl IS NOT NULL
+            WHERE realized_pnl IS NOT NULL
         """).fetchone()
 
         # Today's PnL
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         today_row = conn.execute("""
-            SELECT ROUND(SUM(actual_pnl), 2) as today_pnl,
+            SELECT ROUND(SUM(realized_pnl), 2) as today_pnl,
                    COUNT(*) as today_trades
             FROM trades
-            WHERE DATE(timestamp) = ? AND actual_pnl IS NOT NULL
+            WHERE DATE(timestamp) = ? AND realized_pnl IS NOT NULL
         """, (today,)).fetchone()
 
         # Category breakdown
         cat_rows = conn.execute("""
             SELECT category,
                    COUNT(*) as trades,
-                   ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
-                   ROUND(SUM(actual_pnl), 2) as pnl
+                   ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
+                   ROUND(SUM(realized_pnl), 2) as pnl
             FROM trades
-            WHERE actual_pnl IS NOT NULL
+            WHERE realized_pnl IS NOT NULL
             GROUP BY category
             ORDER BY pnl DESC
         """).fetchall()
@@ -137,13 +137,13 @@ def _query_whales() -> list[dict]:
         rows = conn.execute("""
             SELECT whale_name,
                    COUNT(*) as trades,
-                   ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
-                   ROUND(SUM(actual_pnl), 2) as total_pnl,
-                   ROUND(AVG(actual_pnl), 2) as avg_pnl,
+                   ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
+                   ROUND(SUM(realized_pnl), 2) as total_pnl,
+                   ROUND(AVG(realized_pnl), 2) as avg_pnl,
                    ROUND(AVG(confidence), 3) as avg_confidence,
                    ROUND(AVG(edge_score), 3) as avg_edge
             FROM trades
-            WHERE actual_pnl IS NOT NULL
+            WHERE realized_pnl IS NOT NULL
               AND whale_name IS NOT NULL
               AND whale_name != 'autoresearch_llm'
             GROUP BY whale_name
@@ -183,7 +183,7 @@ def _query_trades(limit: int = 50, offset: int = 0) -> list[dict]:
                    side, entry_price, exit_price, position_size_usd,
                    confidence, edge_score, signal_source,
                    entry_reason, exit_reason,
-                   actual_pnl, actual_return, duration_seconds,
+                   realized_pnl, actual_return, duration_seconds,
                    resolution_outcome, dispute_flag, instrument_id
             FROM trades
             ORDER BY timestamp DESC
@@ -213,7 +213,7 @@ def _query_risk() -> dict:
             SELECT ROUND(SUM(position_size_usd), 2) as total_exposure,
                    COUNT(*) as open_count
             FROM trades
-            WHERE exit_reason IS NULL AND actual_pnl IS NULL
+            WHERE exit_reason IS NULL AND realized_pnl IS NULL
         """).fetchone()
 
         # Category exposure
@@ -222,7 +222,7 @@ def _query_risk() -> dict:
                    ROUND(SUM(position_size_usd), 2) as exposure,
                    COUNT(*) as count
             FROM trades
-            WHERE exit_reason IS NULL AND actual_pnl IS NULL
+            WHERE exit_reason IS NULL AND realized_pnl IS NULL
             GROUP BY category
         """).fetchall()
 
@@ -256,11 +256,11 @@ def _query_performance() -> dict:
         rows = conn.execute("""
             SELECT category,
                    COUNT(*) as trades,
-                   ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
-                   ROUND(SUM(actual_pnl), 2) as pnl,
-                   ROUND(AVG(actual_pnl), 2) as avg_pnl
+                   ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / MAX(COUNT(*), 1), 4) as win_rate,
+                   ROUND(SUM(realized_pnl), 2) as pnl,
+                   ROUND(AVG(realized_pnl), 2) as avg_pnl
             FROM trades
-            WHERE actual_pnl IS NOT NULL AND category IS NOT NULL
+            WHERE realized_pnl IS NOT NULL AND category IS NOT NULL
             GROUP BY category
             ORDER BY pnl DESC
         """).fetchall()
@@ -650,8 +650,8 @@ async function loadTrades() {
     const tbody = document.getElementById('trades-tbody');
     tbody.innerHTML = '';
     for (const t of trades) {
-      const cls = pnlClass(t.actual_pnl);
-      tbody.innerHTML += '<tr><td>' + (t.timestamp||'').substring(0,16) + '</td><td>' + (t.whale_name||'').substring(0,20) + '</td><td>' + (t.market_title||'').substring(0,35) + '</td><td>' + (t.side||'') + '</td><td class="' + cls + '">$' + fmt(t.actual_pnl) + '</td><td>' + (t.category||'') + '</td><td>' + fmt(t.edge_score,3) + '</td></tr>';
+      const cls = pnlClass(t.realized_pnl);
+      tbody.innerHTML += '<tr><td>' + (t.timestamp||'').substring(0,16) + '</td><td>' + (t.whale_name||'').substring(0,20) + '</td><td>' + (t.market_title||'').substring(0,35) + '</td><td>' + (t.side||'') + '</td><td class="' + cls + '">$' + fmt(t.realized_pnl) + '</td><td>' + (t.category||'') + '</td><td>' + fmt(t.edge_score,3) + '</td></tr>';
     }
   } catch(e) {}
 }

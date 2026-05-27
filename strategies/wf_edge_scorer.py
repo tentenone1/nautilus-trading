@@ -161,9 +161,9 @@ class EdgeScorer:
                     pnl_conn = sqlite3.connect(str(self.db_path), timeout=10.0)
                     pnl_rows = pnl_conn.execute(
                         "SELECT whale_name, COUNT(*) as trades, "
-                        "ROUND(SUM(actual_pnl), 2) as pnl, "
-                        "ROUND(AVG(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr "
-                        "FROM trades WHERE whale_name IS NOT NULL AND actual_pnl IS NOT NULL "
+                        "ROUND(SUM(realized_pnl), 2) as pnl, "
+                        "ROUND(AVG(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr "
+                        "FROM trades WHERE whale_name IS NOT NULL AND realized_pnl IS NOT NULL "
                         "GROUP BY whale_name"
                     ).fetchall()
                     pnl_conn.close()
@@ -258,13 +258,13 @@ class EdgeScorer:
                 SELECT
                     category,
                     COUNT(*) as total_trades,
-                    ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*), 4) as win_rate,
-                    ROUND(SUM(actual_pnl), 2) as total_pnl,
-                    ROUND(AVG(actual_pnl), 2) as avg_pnl,
+                    ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*), 4) as win_rate,
+                    ROUND(SUM(realized_pnl), 2) as total_pnl,
+                    ROUND(AVG(realized_pnl), 2) as avg_pnl,
                     ROUND(AVG(edge_score), 3) as avg_edge,
                     ROUND(AVG(confidence), 3) as avg_confidence
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
 
                 GROUP BY category
@@ -526,10 +526,10 @@ class EdgeScorer:
                     edge_score,
                     confidence,
                     side,
-                    actual_pnl,
-                    CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END as win
+                    realized_pnl,
+                    CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END as win
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
 
             """).fetchall()
@@ -566,16 +566,16 @@ class EdgeScorer:
                 else:
                     bucket = "0.7-1.0"
 
-                pnl = d["actual_pnl"]
+                pnl = d["realized_pnl"]
                 # For fade signals, pnl is inverted (we profit when they lose)
                 if result.side_flip:
                     pnl = -pnl
                 buckets[bucket].append(pnl)
 
                 if result.action == "copy":
-                    copy_pnl += d["actual_pnl"]
+                    copy_pnl += d["realized_pnl"]
                 elif result.action == "fade":
-                    fade_pnl += -d["actual_pnl"]
+                    fade_pnl += -d["realized_pnl"]
                 total_validated += 1
 
             # Compute bucket stats
@@ -895,3 +895,94 @@ def calibrate_edge_scorer(
 
 if __name__ == "__main__":
     calibrate_edge_scorer()
+
+
+# ── T13/T16: Edge Confidence (standalone function) ────────────────────────────
+# Imports are here (not top-level) to avoid circular imports.
+# wf_constants may not yet have EDGE_CONFIDENCE_WEIGHTS during early boot.
+
+
+def get_edge_confidence(
+    *,
+    edge_score: float = 0.0,
+    whale_win_rate: float | None = None,
+    whale_trade_count: int = 0,
+    category: str = "general",
+    source: str = "classifier",
+) -> float:
+    """Compute a calibrated confidence score from multiple signals.
+
+    Uses EDGE_CONFIDENCE_WEIGHTS from wf_constants.py to combine:
+      1. whale_win_rate  (45%) — whale's historical WR in this category
+      2. edge_score      (30%) — pipeline edge_score (calibrated 0–1)
+      3. trade_history   (15%) — recency/activity signal from whale_trade_count
+      4. category_perf   (10%) — category-level WR from CATEGORY_WEIGHTS
+
+    Returns a float in [0.0, 1.0]. Returns 0.0 for unknown/new whales
+    with no history.
+
+    Args:
+        edge_score: Pipeline edge_score (0.0–1.0), already computed.
+        whale_win_rate: Whale's historical win rate (0.0–1.0) in this category.
+        whale_trade_count: Number of trades the whale has in this category.
+        category: Market category (general, sports, crypto, geopolitics, etc.).
+        source: Signal source (classifier | fallback | static).
+
+    Returns:
+        Calibrated confidence in [0.0, 1.0].
+    """
+    try:
+        from strategies.wf_constants import (
+            EDGE_CONFIDENCE_WEIGHTS,
+            CATEGORY_WEIGHTS as _CAT_WEIGHTS,
+        )
+        weights = EDGE_CONFIDENCE_WEIGHTS
+    except ImportError:
+        # Graceful degradation if constants not yet loaded
+        weights = {
+            "whale_win_rate": 0.45,
+            "edge_score": 0.30,
+            "trade_history": 0.15,
+            "category_perf": 0.10,
+        }
+        _CAT_WEIGHTS = {
+            "general": 0.65,
+            "sports": 0.30,
+            "crypto": 0.15,
+            "geopolitics": 0.10,
+            "entertainment": 0.0,
+            "finance": 0.0,
+            "unknown": 0.05,
+        }
+
+    # ── Component 1: whale_win_rate (45%) ──────────────────────────────
+    wr_signal = float(whale_win_rate) if whale_win_rate is not None else 0.0
+
+    # ── Component 2: edge_score (30%) ─────────────────────────────────
+    es_signal = float(max(0.0, min(1.0, edge_score)))
+
+    # ── Component 3: trade_history (15%) ──────────────────────────────
+    # More trades → higher confidence in the whale_win_rate signal.
+    # Sigmoid: 0 trades=0, 5 trades≈0.38, 10 trades≈0.50, 20+ trades≈0.73
+    if whale_trade_count <= 0:
+        th_signal = 0.0
+    else:
+        import math
+        th_signal = 1.0 - (1.0 / (1.0 + math.sqrt(max(0, whale_trade_count))))
+
+    # ── Component 4: category_perf (10%) ───────────────────────────────
+    cat_signal = _CAT_WEIGHTS.get(category, 0.05)
+
+    confidence = (
+        weights["whale_win_rate"] * wr_signal
+        + weights["edge_score"] * es_signal
+        + weights["trade_history"] * th_signal
+        + weights["category_perf"] * cat_signal
+    )
+
+    # Unknown whale (no WR, no trade history): return edge_score only
+    # with reduced weight — we have no independent confirmation.
+    if whale_win_rate is None and whale_trade_count == 0:
+        confidence = 0.60 * es_signal  # degrade to just edge_score * 0.60
+
+    return round(max(0.0, min(1.0, confidence)), 4)

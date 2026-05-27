@@ -797,3 +797,170 @@ def trigger_kill_switch(
             log.warning(f"Failed to emit KILL_SWITCH_TRIGGERED event: {e}")
 
     return True
+
+
+# ── T14: is_sharpe_mode() — determines if system should run in Sharpe mode ─────
+
+
+def is_sharpe_mode(
+    *,
+    db_path: str = "/home/elon-1/workspace/nautilus-trading/data/trades.db",
+    min_trades: int | None = None,
+    min_sharpe: float = 0.5,
+    window_days: int = 30,
+) -> bool:
+    """Determine if the system should operate in Sharpe mode.
+
+    Sharpe mode activates when:
+      1. We have at least min_trades (default SHARPE_MODE_MIN_TRADES=50) closed trades
+      2. The realized Sharpe ratio over the lookback window exceeds min_sharpe
+
+    In Sharpe mode the system uses conservative position sizing
+    (SHARPE_MODE_PORTFOLIO_PCT = 30% of bankroll) instead of full Kelly.
+
+    Args:
+        db_path: Path to trades.db.
+        min_trades: Minimum trades in the lookback window to qualify.
+            Defaults to SHARPE_MODE_MIN_TRADES from wf_constants.
+        min_sharpe: Minimum Sharpe ratio to activate mode.
+        window_days: Lookback window in days.
+
+    Returns:
+        True if Sharpe mode should be active, False otherwise.
+    """
+    try:
+        from strategies.wf_constants import (
+            SHARPE_MODE_MIN_TRADES as _DEFAULT_MIN_TRADES,
+            SHARPE_MODE_PORTFOLIO_PCT,
+        )
+        effective_min_trades = min_trades if min_trades is not None else _DEFAULT_MIN_TRADES
+    except ImportError:
+        effective_min_trades = min_trades if min_trades is not None else 50
+
+    import sqlite3
+    from pathlib import Path
+    from datetime import datetime, timezone, timedelta
+
+    db = Path(db_path)
+    if not db.exists():
+        return False
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    cutoff_str = cutoff.strftime("%Y-%m-%d")
+
+    try:
+        conn = sqlite3.connect(str(db), timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT realized_pnl, exit_reason, timestamp
+            FROM trades
+            WHERE realized_pnl IS NOT NULL
+              AND exit_reason IN ('resolved', 'max_hold', 'certainty_win',
+                                  'category_take_profit', 'pre_resolution_stop_loss')
+              AND timestamp >= ?
+            ORDER BY timestamp
+            """,
+            (cutoff_str,),
+        ).fetchall()
+        conn.close()
+
+        if len(rows) < effective_min_trades:
+            return False
+
+        pnls = [float(r["realized_pnl"]) for r in rows]
+        n = len(pnls)
+        mean = sum(pnls) / n
+        variance = sum((p - mean) ** 2 for p in pnls) / max(n - 1, 1)
+        std = variance ** 0.5
+        if std == 0:
+            return False
+        sharpe = (mean / std) * (252 ** 0.5)  # annualized
+        return sharpe >= min_sharpe
+
+    except Exception:
+        return False
+
+
+# ── T15: position_exit_check() — single-position exit check ─────────────────────
+
+
+def position_exit_check(
+    *,
+    instrument_id: InstrumentId | str,
+    open_positions: dict,
+    exited_positions: set,
+    config,
+    cache,
+    log,
+    resolution_poller=None,
+    clob_client=None,
+    strategy=None,
+) -> str | None:
+    """Check a single position for exit conditions and execute if triggered.
+
+    Thin wrapper around should_exit_early() (T11) that also calls exit_position()
+    if the early-exit condition is met. Use this for per-position checks without
+    iterating all open positions.
+
+    Args:
+        instrument_id: Instrument to check.
+        open_positions: dict of inst_key -> position info.
+        exited_positions: set of already-exited inst_keys.
+        config: WhaleFollowerConfig.
+        cache: Nautilus Cache.
+        log: Logger.
+        resolution_poller: Optional ResolutionPoller.
+        clob_client: Optional ClobClient.
+        strategy: Optional WhaleFollower instance.
+
+    Returns:
+        exit_reason if position was exited, None if holding.
+    """
+    from strategies.wf_exits import should_exit_early, exit_position
+
+    try:
+        inst_id = (
+            InstrumentId.from_str(str(instrument_id))
+            if isinstance(instrument_id, str)
+            else instrument_id
+        )
+    except Exception as e:
+        log.debug(f"position_exit_check: bad instrument_id {instrument_id}: {e}")
+        return None
+
+    should_exit, exit_reason = should_exit_early(
+        instrument_id=inst_id,
+        open_positions=open_positions,
+        exited_positions=exited_positions,
+        config=config,
+        cache=cache,
+        log=log,
+        resolution_poller=resolution_poller,
+        clob_client=clob_client,
+        strategy=strategy,
+    )
+
+    if should_exit:
+        inst_key = str(inst_id)
+        pos_info = open_positions.get(inst_key, {})
+        try:
+            exit_position(
+                config=config,
+                cache=cache,
+                log=log,
+                open_positions=open_positions,
+                exited_positions=exited_positions,
+                last_exit_time={},  # caller manages if needed
+                resolution_poller=resolution_poller,
+                clob_client=clob_client,
+                instrument_id=inst_id,
+                exit_reason=exit_reason,
+                market_category=pos_info.get("category", "Unknown"),
+                strategy=strategy,
+            )
+        except Exception as e:
+            log.error(f"position_exit_check: failed to exit {inst_key}: {e}")
+        return exit_reason
+
+    return None

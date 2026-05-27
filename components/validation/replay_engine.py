@@ -234,7 +234,7 @@ class ReplayEngine:
                        edge_score, confidence, resolution_outcome,
                        timestamp, entry_price, exit_price
                 FROM trades
-                WHERE DATE(timestamp) = ? AND actual_pnl IS NOT NULL
+                WHERE DATE(timestamp) = ? AND realized_pnl IS NOT NULL
             """, (date_str,)).fetchall()
 
             for row in rows:

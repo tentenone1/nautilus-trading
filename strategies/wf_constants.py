@@ -4,27 +4,19 @@ All module-level constants and the WhaleFollowerConfig dataclass,
 extracted from whale_follower.py for centralized management.
 
 ============================================
-v5.6-sports-bypass FREEZE — 2026-05-26
+v6.0-observability FREEZE — 2026-05-27
 ============================================
 CHANGELOG:
-  • T1:  Sports Quarantine Bypass — autoresearch (model_insider) signals now
-           bypass ALL 3 sports quarantine checkpoints (wf_signal_handler.py,
-           signal_pipeline.py, position_manager.py). Whale_tracker and sybil
-           sports signals remain quarantined.
-  • T2:  Autoresearch Sports P&L Circuit Breaker — if the last 100 sports
-           trades from autoresearch sum below -$50, the bypass is disabled
-           and sports quarantine is re-enabled for all sources.
-  • T3:  Config Version Enforcement — config_version is now NOT NULL in the
-           DB schema; a post-write consistency check runs at startup and
-           every 4 hours.
-  • T4:  Bad Slippage Data Flagged — trades with slippage_bps = ±10000 or
-           NULL actual_fill_price are marked data_quality='suspect'.
+  • Phase 0: DecisionSnapshot pipeline for full signal-funnel observability.
+              All signal rejections are now recorded with gate-level granularity.
+  • T1–T4: (prior releases — see v5.6-sports-bypass history)
 
 CONFIG:
-  • ACTIVE_CONFIG_VERSION = "v5.6-sports-bypass"
-  • SPORTS_QUARANTINE_BYPASS_SOURCES = {'model_insider', 'autoresearch'}
-  • AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER = -$50 (window: 100 trades)
+  • ACTIVE_CONFIG_VERSION = "v6.0-observability"
+  • FADE_BLACKLIST: static frozenset, manually curated
+  • FADE_LOGIC_ENABLED: flag bypass to re-enable without code revert
 ============================================
+# v6.0-observability: No parameter changes allowed for 14 days from 2026-05-27.
 """
 
 from __future__ import annotations
@@ -32,16 +24,27 @@ from __future__ import annotations
 from nautilus_trader.config import StrategyConfig
 from nautilus_trader.model.identifiers import InstrumentId
 
-# ── Configuration Version ──────────────────────────────────────────────────
+# ── Phase 0: Observability Mode ─────────────────────────────────────────────
+# When True, the pipeline runs normally but blocks live order submission.
+# Every signal still produces a DecisionSnapshot row showing where it died.
+# This allows full funnel analysis without risking any capital.
+SHADOW_MODE: bool = True
+SPORTS_TELEMETRY_MODE: bool = True  # M2: route sports through full pipeline for alpha mapping
+
+# ── Cold-Start Bootstrap Mode ────────────────────────────────────────────────
+# When trades.db has fewer than BOOTSTRAP_MIN_TRADES rows, the system is in
+# cold-start: fast-lane eligibility and tier-based confidence floors can't work
+# because there is no historical data. BOOTSTRAP_MODE bypasses those gates to
+# let signals through. It auto-disables once BOOTSTRAP_MIN_TRADES is reached.
+BOOTSTRAP_MODE = True
+BOOTSTRAP_MIN_TRADES = 50   # Auto-disable bootstrap after 50 trades recorded
+
+# v6.0-observability: No parameter changes allowed for 14 days from 2026-05-27.
+# This config exists purely for observability — all strategy logic is frozen.
+ACTIVE_CONFIG_VERSION = "v6.2-telemetry-bugfix"
 
 # Legacy alias — kept so any old code that imports CONFIG_VERSION still works.
-CONFIG_VERSION = "v5.4-sports-quarantine-fix"
-
-# Single source of truth for all new trade records. Bump this to v5.6, v5.7,
-# etc. whenever a config-changing code change is deployed. The 48h P&L gate
-# uses this to detect a code/DB version mismatch and blocks trading if the
-# most recent closed trade was recorded under a different version.
-ACTIVE_CONFIG_VERSION = "v5.6-sports-bypass"
+CONFIG_VERSION = "v6.1-observability-telemetry"
 
 
 # ── Autoresearch Sports Quarantine Bypass (v5.6) ─────────────────────────
@@ -125,6 +128,24 @@ SPORTS_WHALE_BLACKLIST = frozenset({
     "JPMorgan101",      # -1,510 on sports
     "joblessfinalboss", # -1,446 on sports
 })
+
+
+# ── Fade Blacklist (static, manually maintained) ─────────────────────────────
+# Wallets on this list can be faded ONLY if ALL of:
+#   1. Whale has >= 20 trades in that category
+#   2. Win rate in that category < 25%
+#   3. Whale is on this FADE_BLACKLIST (static — no auto-add)
+# This supersedes dynamic fade detection. is_fade_whale_dynamic() is BYPASSED.
+# Add entries manually — one per line with a comment explaining why.
+FADE_BLACKLIST: frozenset[str] = frozenset({
+    # Examples:
+    # "BadWhale123",   # 15% WR in politics, 50 trades — manual fade
+    # "0xAbc...",      # wallet address with <20% WR across categories
+})
+
+# Flag-based bypass: set to False to disable all fade logic (re-enable by setting True)
+# Used to pause fade signals without reverting code changes.
+FADE_LOGIC_ENABLED: bool = True
 
 
 # ── Certainty Exit Thresholds (binary prediction markets) ────────────────────
@@ -259,6 +280,22 @@ LIQUIDITY_TIER2_MULTIPLIER = 0.75
 MAX_CORRELATED_POSITIONS = 3   # Reject if ≥3 open positions share a keyword cluster
 
 
+# ── Edge Confidence Weights (T16) ────────────────────────────────────────────
+# Weights for each component of edge confidence, summing to 1.0.
+# Used by get_edge_confidence() in wf_edge_scorer.py to produce a calibrated
+# confidence score from multiple signals (whale WR, edge_score, trade history).
+EDGE_CONFIDENCE_WEIGHTS: dict[str, float] = {
+    "whale_win_rate":  0.45,  # Dominant signal: whale's historical WR in this category
+    "edge_score":      0.30,  # Pipeline edge_score from signal (calibrated 0-1)
+    "trade_history":   0.15,  # Volume/recent activity signal (whale is active now)
+    "category_perf":   0.10,  # Category-level WR from historical data
+}
+
+# ── Sharpe Mode ────────────────────────────────────────────────────────────────
+SHARPE_MODE_PORTFOLIO_PCT = 0.30  # Portfolio % used when in Sharpe mode (30% of bankroll)
+SHARPE_MODE_MIN_TRADES = 50        # Min trades before Sharpe mode activates
+
+
 # ── Phase 1 Risk Control Limits ───────────────────────────────────────────────
 
 # Maximum single position size as % of capital (per position cap)
@@ -290,7 +327,7 @@ LIVE_ENTRY_PRICE_CAPS: dict[str, float | None] = {
     "general":      None,   # All entries profitable, no cap needed
     "geopolitics":  None,   # All 45 trades profitable (+$2,856)
     # Tier 2: paper-only — structural losses despite some whale winners
-    "politics":     0.00,   # 9 trades, -$581 avg -$64 — 3 losses offset 2 wins
+    "politics":     0.50,   # Enable with $0.50 cap (conservative re-entry, was 0.00 disabled)
     "economics":    0.00,   # 10 trades, -$408 avg -$41 — consistently losing
     "technology":   0.00,   # 6 trades, -$625 avg -$104 — sample too small
     # Tier 3: price-gated — profitable below threshold, losers above

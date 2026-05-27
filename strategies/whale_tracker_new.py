@@ -818,6 +818,112 @@ class WhaleTracker:
             self.signal_history = self.signal_history[-500:]
         return signals
 
+    def scan_sybil_signals(self, max_age_hours: int = 4) -> list[WhaleSignal]:
+        """I3 Fix: Read pending sybil signals from trades.db and convert to WhaleSignal.
+
+        The sybil detector writes signals to sybil_signals table (950 pending as of r1700)
+        but nothing was reading them and feeding them into the pipeline. This method
+        bridges that gap — it should be called by the main signal loop on each scan cycle.
+
+        Args:
+            max_age_hours: Only process signals newer than this. Default 4h to match
+                          the autoresearch cron cadence.
+
+        Returns:
+            List of WhaleSignal objects ready for signal_pipeline.process().
+        """
+        import sqlite3
+        import time as _time
+
+        db_path = "/home/elon-1/workspace/nautilus-trading/data/trades.db"
+        cutoff_ts = _time.time() - (max_age_hours * 3600)
+        cutoff_iso = _time.strftime("%Y-%m-%dT%H:%M:%S", _time.gmtime(cutoff_ts))
+
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute("PRAGMA busy_timeout=5000")
+            rows = conn.execute(
+                """
+                SELECT generated_at, signal_type, group_id, market_title, condition_id,
+                       side, confidence, reason, total_exposure_usd, wallet_count,
+                       yes_size_usd, no_size_usd, yes_ratio, avg_bet_usd, inserted_at
+                FROM sybil_signals
+                WHERE inserted_at >= ?
+                ORDER BY inserted_at DESC
+                LIMIT 50
+                """,
+                (cutoff_iso,),
+            ).fetchall()
+            conn.close()
+        except Exception as e:
+            import logging as _lg
+            _lg.getLogger("whale_tracker").warning(f"scan_sybil_signals: DB query failed: {e}")
+            return []
+
+        if not rows:
+            return []
+
+        signals = []
+        for row in rows:
+            (generated_at, signal_type, group_id, market_title, condition_id,
+             side, confidence, reason, total_exposure_usd, wallet_count,
+             yes_size_usd, no_size_usd, yes_ratio, avg_bet_usd, inserted_at) = row
+
+            # Skip sports markets — sybil signals are not sanitized by the generator
+            from strategies.wf_sports import is_sports_market
+            if is_sports_market(market_title)[0]:
+                continue
+
+            # Guard: skip signals without a condition_id (unresolvable)
+            if not condition_id or not condition_id.strip():
+                continue
+
+            # Parse side: "BUY YES" or "BUY NO" → WhaleSignal side
+            side_upper = (side or "").upper()
+            if "YES" in side_upper:
+                ws_side = "buy"
+                outcome = "yes"
+            elif "NO" in side_upper:
+                ws_side = "sell"
+                outcome = "no"
+            else:
+                ws_side = "buy"
+                outcome = "yes"
+
+            # Compute edge_score: sybil conviction proxy — total_exposure is a strong signal.
+            # Use log-scaled exposure to keep edge in [0, 1]. $500k+ exposure → edge≈0.5+
+            exposure = float(total_exposure_usd or 0)
+            edge_score = min(float(exposure) / 1_000_000, 1.0) if exposure > 0 else 0.10
+
+            # confidence already computed by sybil_signal_loader (0.5 + wallet_count*0.1, capped 0.99)
+            conf = float(confidence) if confidence else 0.60
+
+            # suggested_size_usd: proportional to conviction but capped for risk management
+            size_usd = min(float(avg_bet_usd or 0) * float(wallet_count or 1), 5000.0)
+
+            ws = WhaleSignal(
+                signal_type=WhaleSignalType.LARGE_POSITION,  # CONCENTRATED_FOLLOW not in enum; LARGE_POSITION is closest match
+                condition_id=str(condition_id).strip(),
+                token_id="",
+                outcome=outcome,
+                side=ws_side,
+                confidence=conf,
+                target_price=0.5,
+                suggested_size_usd=round(size_usd, 2),
+                whale_name=f"sybil_{group_id}" if group_id else "sybil_unknown",
+                whale_roi=0.0,
+                timestamp=_time.time(),
+                reason=reason or "",
+                market_title=market_title or "",
+                market_category="general",
+                whale_address="",
+                edge_score=round(edge_score, 3),
+                source="sybil",
+            )
+            signals.append(ws)
+
+        return signals
+
     def _load_discovered_whales(self) -> None:
         """Load discovered whales from pipeline database."""
         try:
@@ -1000,6 +1106,20 @@ class WhaleTracker:
                 continue
 
             condition_id = trade.get("conditionId", "")
+            # ── Guard: skip trades without a condition_id ─────────────────────
+            # Trades from TradeTick streams can arrive with empty conditionId when
+            # the stream delivers aggregated or cross-market data. These signals
+            # are untradeable — we cannot resolve an instrument without a condition_id.
+            # Reject early at the source instead of propagating bad data through the
+            # pipeline where it wastes processing and produces confusing rejections.
+            if not condition_id or not condition_id.strip():
+                import logging as _lg
+                _lg.getLogger("whale_tracker").debug(
+                    f"detect_large_trades: skipping trade with empty conditionId | "
+                    f"proxy={str(trade.get('proxyWallet',''))[:10]}... usd=${usd:,.0f}"
+                )
+                continue
+
             outcome = trade.get("outcome", "")
             side_raw = trade.get("side", "BUY")
             side = "buy" if side_raw == "BUY" else "sell"
@@ -1018,11 +1138,12 @@ class WhaleTracker:
             # Higher cap (0.85) allows edge scores proportional to trade impact
             large_trade_edge = min(0.40 + (usd / 50000) * 0.15, 0.85)
 
+            token_id = trade.get("token_id", "unknown")
             signals.append(
                 WhaleSignal(
                     signal_type=WhaleSignalType.LARGE_POSITION,
                     condition_id=condition_id,
-                    token_id="unknown",  # Unknown whale, no specific token
+                    token_id=token_id,  # Extracted from instrument_id in TradeTick buffer
                     outcome=outcome,
                     side=side,
                     confidence=confidence,

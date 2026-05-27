@@ -131,10 +131,10 @@ class RegimeDetector:
             # Get all whales with enough trades for regime analysis
             rows = conn.execute("""
                 SELECT whale_name, side, category, COUNT(*) as trades,
-                    ROUND(AVG(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
-                    ROUND(SUM(actual_pnl), 2) as pnl
+                    ROUND(AVG(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
+                    ROUND(SUM(realized_pnl), 2) as pnl
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                 GROUP BY whale_name, side, category
                 HAVING trades >= ?
             """, (MIN_TRADES_FOR_REGIME,)).fetchall()
@@ -143,11 +143,11 @@ class RegimeDetector:
             overall_rows = conn.execute("""
                 SELECT whale_name, side,
                     COUNT(*) as trades,
-                    ROUND(AVG(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
-                    ROUND(SUM(actual_pnl), 2) as pnl,
+                    ROUND(AVG(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
+                    ROUND(SUM(realized_pnl), 2) as pnl,
                     ROUND(AVG(position_size_usd), 2) as avg_size
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                 GROUP BY whale_name, side
                 HAVING trades >= ?
             """, (MIN_TRADES_FOR_REGIME,)).fetchall()
@@ -156,10 +156,10 @@ class RegimeDetector:
             recent_rows = conn.execute("""
                 SELECT whale_name, side, category,
                     COUNT(*) as trades,
-                    ROUND(AVG(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
-                    ROUND(SUM(actual_pnl), 2) as pnl
+                    ROUND(AVG(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
+                    ROUND(SUM(realized_pnl), 2) as pnl
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND timestamp > ?
                 GROUP BY whale_name, side, category
                 HAVING trades >= 3

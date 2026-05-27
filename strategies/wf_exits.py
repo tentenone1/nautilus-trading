@@ -310,6 +310,136 @@ def _update_trade_exit(
         log.error(f"db_exit_update_failed component=wf_exits event=db_exit_update_failed error={e}")
 
 
+# ── T11: should_exit_early() — early exit logic for a single position ──────────
+# Exported from wf_exits.py so callers can check a single position without
+# iterating all open positions. Used by the exit timer and signal handler.
+
+
+def should_exit_early(
+    *,
+    instrument_id: InstrumentId | str,
+    open_positions: dict,
+    exited_positions: set,
+    config,
+    cache,
+    log,
+    resolution_poller=None,
+    clob_client=None,
+    strategy=None,
+) -> tuple[bool, str]:
+    """Check if a single position should exit early.
+
+    Encapsulates all early-exit conditions that were previously embedded in
+    check_all_positions(). Calling this directly avoids iterating all positions
+    when checking one instrument.
+
+    Args:
+        instrument_id: Instrument to check.
+        open_positions: dict of inst_key -> position info.
+        exited_positions: set of already-exited inst_keys.
+        config: WhaleFollowerConfig.
+        cache: Nautilus Cache.
+        log: Logger.
+        resolution_poller: Optional ResolutionPoller.
+        clob_client: Optional ClobClient.
+        strategy: Optional WhaleFollower instance.
+
+    Returns:
+        Tuple of (should_exit, exit_reason). should_exit=False means hold.
+    """
+    inst_key = str(instrument_id)
+
+    if inst_key in exited_positions:
+        return False, ""
+
+    pos_info = open_positions.get(inst_key, {})
+    if not pos_info:
+        return False, ""
+
+    # Check Nautilus cache
+    try:
+        inst_id = InstrumentId.from_str(inst_key)
+    except Exception:
+        return False, ""
+    open_pos_list = cache.positions_open(instrument_id=inst_id)
+    if not open_pos_list or open_pos_list[0].quantity.as_double() == 0:
+        return False, ""
+
+    pos = open_pos_list[0]
+    raw_entry = pos.avg_px_open
+    entry = (
+        raw_entry.as_double()
+        if hasattr(raw_entry, "as_double")
+        else float(raw_entry)
+    )
+    if entry <= 0:
+        return False, ""
+
+    # Get mid price
+    quote = cache.quote_tick(inst_id)
+    if quote is None:
+        mid = _resolve_exit_price_with_deps(
+            pos_info=pos_info,
+            instrument_id_str=inst_key,
+            resolution_poller=resolution_poller,
+            clob_client=clob_client,
+            log=log,
+        )
+    else:
+        mid = (quote.bid_price.as_double() + quote.ask_price.as_double()) / 2
+
+    side = pos_info.get("side", "BUY")
+    category = (pos_info.get("category") or "").lower()
+    thresholds = CATEGORY_EXIT_THRESHOLDS.get(category, _DEFAULT_EXIT_THRESHOLDS)
+
+    if side == "BUY":
+        current_return = (mid - entry) / entry
+    else:
+        current_return = (entry - mid) / entry
+
+    # Category stop-loss
+    if current_return <= thresholds["stop_loss_pct"]:
+        return True, "category_stop_loss"
+
+    # Category take-profit
+    if current_return >= thresholds["take_profit_pct"]:
+        return True, "category_take_profit"
+
+    # Certainty win
+    if side == "BUY":
+        is_certain_win = mid > CERTAINTY_WIN_THRESHOLD
+        is_certain_loss = mid < CERTAINTY_LOSS_THRESHOLD
+    else:
+        is_certain_win = mid < CERTAINTY_LOSS_THRESHOLD
+        is_certain_loss = mid > CERTAINTY_WIN_THRESHOLD
+
+    if is_certain_win:
+        return True, "certainty_win"
+
+    if is_certain_loss:
+        # Certainty loss: hold to resolution, don't exit early
+        return False, ""
+
+    # Sports stop-loss
+    if category == "sports":
+        qty = pos.quantity.as_double()
+        unrealized_pnl = qty * (mid - entry) if side == "BUY" else qty * (entry - mid)
+        if unrealized_pnl <= -SPORTS_AUTO_EXIT_LOSS:
+            return True, "sports_stop_loss"
+
+    # Pre-resolution stop-loss
+    hours_left = hours_until_resolution(inst_key)
+    if hours_left is not None and 0 < hours_left < PRE_RESOLUTION_EXIT_HOURS:
+        if current_return <= PRE_RESOLUTION_STOP_LOSS_PCT:
+            return True, "pre_resolution_stop_loss"
+
+    # Resolution exit
+    if should_exit_for_resolution(inst_key, log_func=log.warning):
+        return True, "resolution_exit"
+
+    return False, ""
+
+
 def _close_position_nautilus(cache, position, log, inst_id) -> None:
     """Close a position via the Nautilus framework.
 

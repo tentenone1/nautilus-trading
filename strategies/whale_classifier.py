@@ -105,10 +105,10 @@ class WhaleClassifier:
                 SELECT
                     whale_name,
                     COUNT(*) as total_trades,
-                    SUM(CASE WHEN actual_pnl > 0 THEN 1 ELSE 0 END) as wins,
-                    ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*), 4) as win_rate,
-                    ROUND(SUM(actual_pnl), 2) as total_pnl,
-                    ROUND(AVG(actual_pnl), 2) as avg_pnl,
+                    SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END) as wins,
+                    ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*), 4) as win_rate,
+                    ROUND(SUM(realized_pnl), 2) as total_pnl,
+                    ROUND(AVG(realized_pnl), 2) as avg_pnl,
                     GROUP_CONCAT(DISTINCT category) as categories,
                     SUM(CASE WHEN side = 'BUY' THEN 1 ELSE 0 END) as buy_count,
                     SUM(CASE WHEN side = 'SELL' THEN 1 ELSE 0 END) as sell_count,
@@ -116,7 +116,7 @@ class WhaleClassifier:
                     ROUND(AVG(edge_score), 3) as avg_edge,
                     ROUND(AVG(confidence), 3) as avg_confidence
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
                   AND whale_name != 'autoresearch_llm'
                 GROUP BY whale_name
@@ -256,11 +256,11 @@ class WhaleClassifier:
                 SELECT
                     category,
                     COUNT(*) as trades,
-                    ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*), 4) as win_rate,
-                    ROUND(SUM(actual_pnl), 2) as total_pnl,
-                    ROUND(AVG(actual_pnl), 2) as avg_pnl
+                    ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*), 4) as win_rate,
+                    ROUND(SUM(realized_pnl), 2) as total_pnl,
+                    ROUND(AVG(realized_pnl), 2) as avg_pnl
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND whale_name = ?
                   AND whale_name != 'autoresearch_llm'
                 GROUP BY category
@@ -291,12 +291,12 @@ class WhaleClassifier:
                     whale_name,
                     category,
                     COUNT(*) as trades,
-                    ROUND(SUM(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*), 4) as win_rate,
-                    ROUND(SUM(actual_pnl), 2) as total_pnl,
+                    ROUND(SUM(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END) / COUNT(*), 4) as win_rate,
+                    ROUND(SUM(realized_pnl), 2) as total_pnl,
                     ROUND(AVG(edge_score), 3) as avg_edge,
                     ROUND(AVG(confidence), 3) as avg_confidence
                 FROM trades
-                WHERE actual_pnl IS NOT NULL
+                WHERE realized_pnl IS NOT NULL
                   AND whale_name IS NOT NULL
                   AND whale_name != 'autoresearch_llm'
                 GROUP BY whale_name, category

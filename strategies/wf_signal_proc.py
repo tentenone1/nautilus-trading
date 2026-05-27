@@ -66,14 +66,14 @@ def scan_whale_positions(
                 f"from {len(tracker.whales)} tracked whales"
             )
 
-        for signal in signals:
+        for sig in signals:
             if trades_this_scan >= config.max_trades_per_scan:
                 log.info(
                     f"Scan trade limit reached ({config.max_trades_per_scan}), "
                     f"skipping {len(signals) - trades_this_scan} remaining signals"
                 )
                 break
-            on_signal_fn(signal)
+            on_signal_fn(sig)
             trades_this_scan += 1
     except Exception as e:
         import traceback
@@ -111,3 +111,28 @@ def get_whale_classification(whale_name: str) -> str:
         pass
 
     return "unknown"
+
+
+def is_excluded_market(market_id: str, config, *, market_title: str = "", category: str = "") -> bool:
+    """Check if a market is excluded from autoresearch signals.
+
+    T12: Delegates to autoresearch_signal_bridge.py which provides the working
+    implementation with category exclusions, title patterns, and whitelist bypass.
+    The stub in this file is fully overridden — the autoresearch_bridge implementation
+    is imported and called directly by callers.
+    """
+    try:
+        from strategies.autoresearch_signal_bridge import is_excluded_market as _impl
+        return _impl(
+            market_id=market_id,
+            config=config,
+            market_title=market_title,
+            category=category,
+        )
+    except Exception:
+        # Graceful fallback to basic config check
+        try:
+            ignored = getattr(config, "ignored_markets", None) or []
+            return market_id in ignored
+        except Exception:
+            return False

@@ -392,7 +392,7 @@ class ResolutionPoller:
                     t.side, t.entry_price, t.position_size_usd,
                     t.market_title
                 FROM trades t
-                WHERE t.actual_pnl IS NULL
+                WHERE t.realized_pnl IS NULL
                   AND t.condition_id IS NOT NULL
                   AND t.condition_id != ''
                   AND t.instrument_id IS NOT NULL

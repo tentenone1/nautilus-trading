@@ -100,14 +100,14 @@ class AdversarialDetector:
             conn.row_factory = sqlite3.Row
             overall = conn.execute("""
                 SELECT COUNT(*) as trades,
-                    ROUND(AVG(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
-                    ROUND(SUM(actual_pnl), 2) as total_pnl,
+                    ROUND(AVG(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
+                    ROUND(SUM(realized_pnl), 2) as total_pnl,
                     ROUND(AVG(position_size_usd), 2) as avg_size,
                     ROUND(AVG(confidence), 4) as avg_conf,
                     ROUND(AVG(total_latency_ms), 1) as avg_latency,
                     COUNT(DISTINCT category) as categories,
                     COUNT(DISTINCT side) as sides
-                FROM trades WHERE actual_pnl IS NOT NULL AND whale_name = ?
+                FROM trades WHERE realized_pnl IS NOT NULL AND whale_name = ?
             """, (whale_name,)).fetchone()
             if not overall or overall["trades"] < 3:
                 conn.close()
@@ -210,10 +210,10 @@ class AdversarialDetector:
     def _is_loss_leader(self, conn, whale_name, overall):
         sides = conn.execute("""
             SELECT side, COUNT(*) as trades,
-                ROUND(AVG(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
-                ROUND(SUM(actual_pnl), 2) as total_pnl,
+                ROUND(AVG(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
+                ROUND(SUM(realized_pnl), 2) as total_pnl,
                 ROUND(AVG(position_size_usd), 2) as avg_size
-            FROM trades WHERE actual_pnl IS NOT NULL AND whale_name = ?
+            FROM trades WHERE realized_pnl IS NOT NULL AND whale_name = ?
             GROUP BY side
         """, (whale_name,)).fetchall()
         if len(sides) < 2:
@@ -252,10 +252,10 @@ class AdversarialDetector:
     def _is_cross_platform_hedger(self, conn, whale_name):
         categories = conn.execute("""
             SELECT category, COUNT(*) as trades,
-                ROUND(AVG(CASE WHEN actual_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
-                ROUND(SUM(actual_pnl), 2) as total_pnl,
+                ROUND(AVG(CASE WHEN realized_pnl > 0 THEN 1.0 ELSE 0.0 END), 4) as wr,
+                ROUND(SUM(realized_pnl), 2) as total_pnl,
                 ROUND(AVG(position_size_usd), 2) as avg_size
-            FROM trades WHERE actual_pnl IS NOT NULL AND whale_name = ?
+            FROM trades WHERE realized_pnl IS NOT NULL AND whale_name = ?
             GROUP BY category HAVING trades >= ?
         """, (whale_name, HEDGER_MIN_TRADES)).fetchall()
         if len(categories) < 2:
@@ -297,7 +297,7 @@ class AdversarialDetector:
             conn = sqlite3.connect(str(self.db_path), timeout=30.0)
             whales = conn.execute("""
                 SELECT DISTINCT whale_name FROM trades
-                WHERE actual_pnl IS NOT NULL AND whale_name IS NOT NULL
+                WHERE realized_pnl IS NOT NULL AND whale_name IS NOT NULL
             """).fetchall()
             conn.close()
             results = {}

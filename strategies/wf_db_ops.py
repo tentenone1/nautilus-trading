@@ -42,6 +42,82 @@ _PHASE1_COLUMNS = [
     ("token1_outcome", "TEXT"),
 ]
 
+# Column definitions for the decision_snapshots table used in the
+# signal-funnel observability layer (Phase 0 diagnostics).
+_DECISION_SNAPSHOT_COLUMNS = [
+    ("id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
+    ("timestamp", "TEXT NOT NULL"),
+    ("signal_id", "TEXT"),
+    ("source", "TEXT"),
+    ("category", "TEXT"),
+    ("market_title", "TEXT"),
+    ("condition_id", "TEXT"),
+    ("whale_name", "TEXT"),
+    ("whale_address", "TEXT"),
+    ("signal_type", "TEXT"),           # "COPY" or "FADE"
+    ("edge_score", "REAL"),
+    ("whale_wr", "REAL"),
+    ("whale_sample_size", "INTEGER"),
+    ("confidence", "REAL"),
+    ("side", "TEXT"),                   # "BUY" or "SELL"
+    # Gate results (1=passed, 0=rejected, -1=not evaluated)
+    ("passed_category_filter", "INTEGER DEFAULT -1"),
+    ("passed_quarantine", "INTEGER DEFAULT -1"),
+    ("passed_blacklist", "INTEGER DEFAULT -1"),
+    ("passed_edge_threshold", "INTEGER DEFAULT -1"),
+    ("passed_fade_eligibility", "INTEGER DEFAULT -1"),
+    ("passed_risk_manager", "INTEGER DEFAULT -1"),
+    ("passed_execution_checks", "INTEGER DEFAULT -1"),
+    ("passed_position_limits", "INTEGER DEFAULT -1"),
+    ("passed_pnl_gate", "INTEGER DEFAULT -1"),
+    ("passed_correlation_gate", "INTEGER DEFAULT -1"),
+    ("passed_capital_pool", "INTEGER DEFAULT -1"),
+    # Decision
+    ("final_decision", "TEXT"),         # "TRADE", "REJECT", "SHADOW_TRADE"
+    ("reject_reason", "TEXT"),
+    ("position_size_usd", "REAL"),
+    ("config_version", "TEXT"),
+    ("shadow_mode", "INTEGER DEFAULT 0"),
+    ("metadata_json", "TEXT"),
+]
+
+# Column definitions for the shadow_trades table.
+# Records every SHADOW_TRADE signal for later resolution scoring.
+# Populated proactively when SHADOW_MODE blocks execution (position_manager.py),
+# and updated when Polymarket resolves the market.
+_SHADOW_TRADE_COLUMNS = [
+    ("id", "INTEGER PRIMARY KEY AUTOINCREMENT"),
+    ("snapshot_id", "INTEGER"),           # FK to decision_snapshots.id
+    ("condition_id", "TEXT NOT NULL"),
+    ("instrument_id", "TEXT"),           # Full instrument ID
+    ("side", "TEXT"),                   # "BUY" or "SELL"
+    ("entry_price", "REAL"),             # Simulated entry price (current mid at signal time)
+    ("position_size_usd", "REAL"),      # Kelly-computed size
+    ("whale_name", "TEXT"),
+    ("whale_address", "TEXT"),
+    ("market_title", "TEXT"),
+    ("category", "TEXT"),
+    ("edge_score", "REAL"),
+    ("confidence", "REAL"),
+    ("signal_type", "TEXT"),            # "COPY" or "FADE"
+    ("entry_timestamp", "TEXT"),         # When signal was received (from decision_snapshots.timestamp)
+    ("config_version", "TEXT"),
+    # Resolution fields (updated by wf_shadow_ledger.py)
+    ("resolution_polled_at", "TEXT"),
+    ("resolved", "INTEGER DEFAULT 0"),  # 1=resolved, 0=pending
+    ("resolution_timestamp", "TEXT"),    # When market closed on Polymarket
+    ("winning_outcome", "TEXT"),
+    ("winning_token_id", "TEXT"),
+    ("losing_outcome", "TEXT"),
+    ("losing_token_id", "TEXT"),
+    # Scoring
+    ("actual_pnl", "REAL"),            # Calculated P&L based on resolution
+    ("actual_return", "REAL"),          # Return %
+    ("won", "INTEGER"),                 # 1=won, 0=lost, NULL=pending
+    ("resolution_source", "TEXT"),      # "clob_api", "gamma_api", or NULL
+    ("last_error", "TEXT"),             # Last polling error message
+]
+
 
 def _ensure_db_schema(conn: sqlite3.Connection) -> None:
     """Create the trades table if it does not exist."""
@@ -110,57 +186,7 @@ def _ensure_db_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_whale_condition ON trades(whale_name, condition_id)")
 
 
-def ensure_decision_snapshots_table(db_path: Optional[Path] = None) -> None:
-    """Create the decision_snapshots table if it does not exist.
 
-    Phase 0 observability: logs every signal decision (passed/failed gates)
-    so the signal funnel can be analyzed offline without relying on in-process
-    log parsing.
-    """
-    if db_path is None:
-        db_path = Path(__file__).parent.parent / "research" / "trades.db"
-
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS decision_snapshots (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                signal_id TEXT,
-                source TEXT,
-                category TEXT,
-                market_title TEXT,
-                condition_id TEXT,
-                whale_name TEXT,
-                whale_address TEXT,
-                signal_type TEXT,
-                edge_score REAL,
-                whale_wr REAL,
-                whale_sample_size INTEGER,
-                confidence REAL,
-                side TEXT,
-                passed_category_filter INTEGER DEFAULT -1,
-                passed_quarantine INTEGER DEFAULT -1,
-                passed_blacklist INTEGER DEFAULT -1,
-                passed_edge_threshold INTEGER DEFAULT -1,
-                passed_fade_eligibility INTEGER DEFAULT -1,
-                passed_risk_manager INTEGER DEFAULT -1,
-                passed_execution_checks INTEGER DEFAULT -1,
-                passed_position_limits INTEGER DEFAULT -1,
-                passed_pnl_gate INTEGER DEFAULT -1,
-                passed_correlation_gate INTEGER DEFAULT -1,
-                passed_capital_pool INTEGER DEFAULT -1,
-                final_decision TEXT,
-                reject_reason TEXT,
-                position_size_usd REAL,
-                config_version TEXT,
-                shadow_mode INTEGER DEFAULT 0,
-                metadata_json TEXT
-            )
-        """)
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def migrate_trades_db(db_path: Optional[Path] = None) -> bool:
@@ -195,9 +221,505 @@ def migrate_trades_db(db_path: Optional[Path] = None) -> bool:
             if col_name not in existing_columns:
                 conn.execute(f"ALTER TABLE trades ADD COLUMN {col_name} {col_def}")
 
+        # Ensure decision_snapshots table exists (Phase 0 observability)
+        ensure_decision_snapshots_table(str(db))
         return True
 
     except Exception:
+        return False
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+# ── Shadow Trade Ledger ─────────────────────────────────────────────────────────
+
+def ensure_shadow_trades_table(db_path: str | None = None) -> None:
+    """Create the shadow_trades table if it does not exist.
+
+    Also creates indexes on condition_id and resolved to support fast
+    polling queries.
+
+    Args:
+        db_path: Path to trades.db. Defaults to data/trades.db.
+    """
+    db = Path(db_path) if db_path else Path("/home/elon-1/workspace/nautilus-trading/data/trades.db")
+    db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db))
+    conn.execute("PRAGMA journal_mode=WAL")
+    col_defs = ", ".join(f"{name} {defn}" for name, defn in _SHADOW_TRADE_COLUMNS)
+    conn.execute(f"CREATE TABLE IF NOT EXISTS shadow_trades ({col_defs})")
+    for idx_col in ("condition_id", "resolved", "entry_timestamp", "config_version"):
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_st_{idx_col} "
+            f"ON shadow_trades({idx_col})"
+        )
+    conn.commit()
+    conn.close()
+
+
+def insert_shadow_trade(
+    *,
+    snapshot_id: int | None = None,
+    condition_id: str,
+    instrument_id: str = "",
+    side: str = "",
+    entry_price: float = 0.0,
+    position_size_usd: float = 0.0,
+    whale_name: str = "",
+    whale_address: str = "",
+    market_title: str = "",
+    category: str = "",
+    edge_score: float = 0.0,
+    confidence: float = 0.0,
+    signal_type: str = "",
+    entry_timestamp: str = "",
+    config_version: str = "",
+    db_path: str | None = None,
+) -> bool:
+    """Insert a shadow trade record for a SHADOW_TRADE signal.
+
+    Called proactively from position_manager.py when SHADOW_MODE blocks execution,
+    and from wf_shadow_ledger.py on startup to backfill existing SHADOW_TRADE
+    decision snapshots that don't yet have a shadow_trades row.
+
+    Args:
+        snapshot_id: FK to decision_snapshots.id.
+        condition_id: Market condition ID (required).
+        instrument_id: Full instrument ID string.
+        side: "BUY" or "SELL".
+        entry_price: Simulated entry price.
+        position_size_usd: Kelly-computed position size.
+        whale_name: Whale name.
+        whale_address: Whale on-chain address.
+        market_title: Human-readable market title.
+        category: Market category.
+        edge_score: Calibrated edge score.
+        confidence: Signal confidence (0–1).
+        signal_type: "COPY" or "FADE".
+        entry_timestamp: When signal was received (from decision_snapshots.timestamp).
+        config_version: Config version tag at signal time.
+        db_path: Path to trades.db.
+
+    Returns:
+        True on success, False on failure.
+    """
+    db = Path(db_path) if db_path else Path("/home/elon-1/workspace/nautilus-trading/data/trades.db")
+    db.parent.mkdir(parents=True, exist_ok=True)
+    conn = None
+    try:
+        ensure_shadow_trades_table(str(db))
+        conn = sqlite3.connect(str(db))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute(
+            """INSERT INTO shadow_trades (
+                snapshot_id, condition_id, instrument_id, side,
+                entry_price, position_size_usd, whale_name, whale_address,
+                market_title, category, edge_score, confidence, signal_type,
+                entry_timestamp, config_version
+            ) VALUES (
+                ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?
+            )""",
+            (
+                snapshot_id, condition_id, instrument_id, side,
+                entry_price, position_size_usd, whale_name, whale_address,
+                market_title, category, edge_score, confidence, signal_type,
+                entry_timestamp, config_version,
+            ),
+        )
+        conn.execute("COMMIT")
+        return True
+    except Exception:
+        if conn:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+        return False
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def update_shadow_trade_resolution(
+    *,
+    condition_id: str,
+    resolved: bool,
+    resolution_timestamp: str = "",
+    winning_outcome: str = "",
+    winning_token_id: str = "",
+    losing_outcome: str = "",
+    losing_token_id: str = "",
+    actual_pnl: float | None = None,
+    actual_return: float | None = None,
+    won: bool | None = None,
+    resolution_source: str = "",
+    last_error: str = "",
+    db_path: str | None = None,
+) -> bool:
+    """Update resolution fields for all pending shadow_trades rows matching condition_id.
+
+    Called by wf_shadow_ledger.py after polling the Polymarket CLOB API.
+
+    Args:
+        condition_id: Market condition ID to update.
+        resolved: Whether market is resolved.
+        resolution_timestamp: When market resolved (ISO-8600).
+        winning_outcome: Name of winning outcome.
+        winning_token_id: Token ID of winning outcome.
+        losing_outcome: Name of losing outcome.
+        losing_token_id: Token ID of losing outcome.
+        actual_pnl: Calculated P&L.
+        actual_return: Calculated return %.
+        won: 1=won, 0=lost.
+        resolution_source: "clob_api" or "gamma_api".
+        last_error: Last polling error message.
+        db_path: Path to trades.db.
+
+    Returns:
+        True on success, False on failure.
+    """
+    db = Path(db_path) if db_path else Path("/home/elon-1/workspace/nautilus-trading/data/trades.db")
+    if not db.exists():
+        return False
+    conn = None
+    try:
+        conn = sqlite3.connect(str(db))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute(
+            """UPDATE shadow_trades SET
+                resolved = ?,
+                resolution_timestamp = ?,
+                winning_outcome = ?,
+                winning_token_id = ?,
+                losing_outcome = ?,
+                losing_token_id = ?,
+                actual_pnl = ?,
+                actual_return = ?,
+                won = ?,
+                resolution_source = ?,
+                last_error = ?,
+                resolution_polled_at = ?
+            WHERE condition_id = ? AND resolved = 0""",
+            (
+                1 if resolved else 0,
+                resolution_timestamp,
+                winning_outcome,
+                winning_token_id,
+                losing_outcome,
+                losing_token_id,
+                actual_pnl,
+                actual_return,
+                1 if won is True else (0 if won is False else None),
+                resolution_source,
+                last_error,
+                str(datetime.now(timezone.utc)),
+                condition_id,
+            ),
+        )
+        conn.execute("COMMIT")
+        return True
+    except Exception:
+        if conn:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+        return False
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def get_pending_shadow_trades(
+    db_path: str | None = None,
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    """Fetch pending (unresolved) shadow_trades rows ordered by entry_timestamp ASC.
+
+    Args:
+        db_path: Path to trades.db.
+        limit: Max rows to return (default 200).
+
+    Returns:
+        List of dicts with all shadow_trades columns.
+    """
+    db = Path(db_path) if db_path else Path("/home/elon-1/workspace/nautilus-trading/data/trades.db")
+    if not db.exists():
+        return []
+    conn = None
+    try:
+        conn = sqlite3.connect(str(db))
+        conn.execute("PRAGMA busy_timeout=5000")
+        rows = conn.execute(
+            """SELECT * FROM shadow_trades
+               WHERE resolved = 0
+               ORDER BY entry_timestamp ASC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        cols = [desc[0] for desc in conn.execute("SELECT * FROM shadow_trades LIMIT 0").description]
+        conn.close()
+        return [dict(zip(cols, row)) for row in rows]
+    except Exception:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return []
+
+
+def backfill_shadow_trades_from_snapshots(db_path: str | None = None) -> int:
+    """Backfill shadow_trades rows for any SHADOW_TRADE decision_snapshots that
+    don't yet have a shadow_trades row.
+
+    Called at wf_shadow_ledger startup to ensure completeness.
+
+    Args:
+        db_path: Path to trades.db.
+
+    Returns:
+        Number of rows inserted.
+    """
+    db = Path(db_path) if db_path else Path("/home/elon-1/workspace/nautilus-trading/data/trades.db")
+    if not db.exists():
+        return 0
+    conn = None
+    try:
+        ensure_shadow_trades_table(str(db))
+        conn = sqlite3.connect(str(db))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        # Find SHADOW_TRADE snapshots without a shadow_trades row
+        rows = conn.execute(
+            """SELECT ds.id, ds.condition_id, ds.side, ds.entry_price,
+                      ds.position_size_usd, ds.whale_name, ds.whale_address,
+                      ds.market_title, ds.category, ds.edge_score, ds.confidence,
+                      ds.signal_type, ds.timestamp, ds.config_version
+               FROM decision_snapshots ds
+               LEFT JOIN shadow_trades st ON st.snapshot_id = ds.id
+               WHERE ds.final_decision = 'SHADOW_TRADE'
+                 AND st.id IS NULL
+                 AND ds.condition_id IS NOT NULL
+                 AND ds.condition_id != ''"""
+        ).fetchall()
+        if not rows:
+            return 0
+        inserted = 0
+        for row in rows:
+            try:
+                conn.execute("BEGIN TRANSACTION")
+                conn.execute(
+                    """INSERT INTO shadow_trades (
+                        snapshot_id, condition_id, side, entry_price,
+                        position_size_usd, whale_name, whale_address,
+                        market_title, category, edge_score, confidence,
+                        signal_type, entry_timestamp, config_version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    row[1:] + (row[0],)[:0] + row,  # skip ds.id (row[0]), add at end
+                )
+                # Actually insert with snapshot_id at position 0
+                conn.execute(
+                    """INSERT INTO shadow_trades (
+                        snapshot_id, condition_id, side, entry_price,
+                        position_size_usd, whale_name, whale_address,
+                        market_title, category, edge_score, confidence,
+                        signal_type, entry_timestamp, config_version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], row[13]),
+                )
+                conn.execute("COMMIT")
+                inserted += 1
+            except Exception:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+        conn.close()
+        return inserted
+    except Exception:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return 0
+
+
+
+def ensure_decision_snapshots_table(db_path: str | None = None) -> None:
+    """Create the decision_snapshots table if it does not exist.
+
+    Also creates indexes on timestamp, source, category, reject_reason,
+    and final_decision to support fast funnel-analysis queries.
+
+    Args:
+        db_path: Path to trades.db. Defaults to research/trades.db.
+    """
+    db = Path(db_path) if db_path else _DEFAULT_DB_PATH
+    db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db))
+    conn.execute("PRAGMA journal_mode=WAL")
+    col_defs = ", ".join(f"{name} {defn}" for name, defn in _DECISION_SNAPSHOT_COLUMNS)
+    conn.execute(f"CREATE TABLE IF NOT EXISTS decision_snapshots ({col_defs})")
+    # Indexes for funnel analysis
+    for idx_col in ("timestamp", "source", "category", "reject_reason", "final_decision"):
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_ds_{idx_col} "
+            f"ON decision_snapshots({idx_col})"
+        )
+    conn.commit()
+    conn.close()
+
+
+def insert_decision_snapshot(
+    *,
+    signal_id: str = "",
+    source: str = "",
+    category: str = "",
+    market_title: str = "",
+    condition_id: str = "",
+    whale_name: str = "",
+    whale_address: str = "",
+    signal_type: str = "",
+    edge_score: float = 0.0,
+    whale_wr: float = 0.0,
+    whale_sample_size: int = 0,
+    confidence: float = 0.0,
+    side: str = "",
+    passed_category_filter: int = -1,
+    passed_quarantine: int = -1,
+    passed_blacklist: int = -1,
+    passed_edge_threshold: int = -1,
+    passed_fade_eligibility: int = -1,
+    passed_risk_manager: int = -1,
+    passed_execution_checks: int = -1,
+    passed_position_limits: int = -1,
+    passed_pnl_gate: int = -1,
+    passed_correlation_gate: int = -1,
+    passed_capital_pool: int = -1,
+    final_decision: str = "REJECT",
+    reject_reason: str = "",
+    position_size_usd: float = 0.0,
+    config_version: str = "",
+    shadow_mode: int = 0,
+    metadata_json: str = "",
+    db_path: str | None = None,
+) -> bool:
+    """Insert a decision snapshot record into the decision_snapshots table.
+
+    Records the full signal metadata and per-gate pass/fail results so the
+    signal funnel can be reconstructed and analysed after the fact.
+
+    Gate field semantics:
+        1  = passed
+        0  = rejected
+       -1  = not evaluated (gate skipped)
+
+    Args:
+        signal_id: Unique identifier for this signal event.
+        source: Signal source (e.g. "whale_tracker").
+        category: Market category.
+        market_title: Human-readable market title.
+        condition_id: Condition ID of the market.
+        whale_name: Whale wallet name or label.
+        whale_address: Whale on-chain address.
+        signal_type: "COPY" or "FADE".
+        edge_score: Calibrated edge score.
+        whale_wr: Whale win-rate estimate.
+        whale_sample_size: Number of trades used for whale_wr.
+        confidence: Signal confidence (0–1).
+        side: "BUY" or "SELL".
+        passed_category_filter: Category allowlist gate result.
+        passed_quarantine: Quarantine expiry gate result.
+        passed_blacklist: Blacklist/whitelist gate result.
+        passed_edge_threshold: Minimum edge score gate result.
+        passed_fade_eligibility: Fade-eligibility gate result.
+        passed_risk_manager: Risk-manager review result.
+        passed_execution_checks: Execution feasibility result.
+        passed_position_limits: Per-whale / per-market position limit result.
+        passed_pnl_gate: Category P&L gate result.
+        passed_correlation_gate: Correlation filter result.
+        passed_capital_pool: Capital availability gate result.
+        final_decision: "TRADE", "REJECT", or "SHADOW_TRADE".
+        reject_reason: Human-readable rejection description.
+        position_size_usd: Position size computed by the sizer.
+        config_version: Config version tag at time of decision.
+        shadow_mode: 1 if shadow/simulation mode, 0 otherwise.
+        metadata_json: Optional arbitrary JSON metadata blob.
+        db_path: Path to trades.db. Defaults to research/trades.db.
+
+    Returns:
+        True on success, False on failure.
+    """
+    import json
+
+    db = Path(db_path) if db_path else _DEFAULT_DB_PATH
+    db.parent.mkdir(parents=True, exist_ok=True)
+
+    timestamp = str(datetime.now(timezone.utc))
+
+    conn = None
+    try:
+        ensure_decision_snapshots_table(str(db))
+        conn = sqlite3.connect(str(db))
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute(
+            f"""INSERT INTO decision_snapshots (
+                timestamp, signal_id, source, category, market_title, condition_id,
+                whale_name, whale_address, signal_type, edge_score, whale_wr,
+                whale_sample_size, confidence, side,
+                passed_category_filter, passed_quarantine, passed_blacklist,
+                passed_edge_threshold, passed_fade_eligibility, passed_risk_manager,
+                passed_execution_checks, passed_position_limits, passed_pnl_gate,
+                passed_correlation_gate, passed_capital_pool,
+                final_decision, reject_reason, position_size_usd,
+                config_version, shadow_mode, metadata_json
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?
+            )""",
+            (
+                timestamp, signal_id, source, category, market_title, condition_id,
+                whale_name, whale_address, signal_type, edge_score, whale_wr,
+                whale_sample_size, confidence, side,
+                passed_category_filter, passed_quarantine, passed_blacklist,
+                passed_edge_threshold, passed_fade_eligibility, passed_risk_manager,
+                passed_execution_checks, passed_position_limits, passed_pnl_gate,
+                passed_correlation_gate, passed_capital_pool,
+                final_decision, reject_reason, position_size_usd,
+                config_version, shadow_mode, metadata_json,
+            ),
+        )
+        conn.execute("COMMIT")
+        return True
+
+    except Exception:
+        if conn:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
         return False
     finally:
         if conn:
