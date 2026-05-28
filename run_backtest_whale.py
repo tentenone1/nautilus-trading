@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ── Path setup ──
 # nautilus-trading LAST (ends up at sys.path[0]) so its strategies/ package is found first
-NAUTILUS_ROOT = os.path.expanduser("/home/elon-1/workspace/nautilus-trading")
+NAUTILUS_ROOT = Path(os.path.expanduser("/home/elon-1/workspace/nautilus-trading"))
 TOOL_ROOT = os.path.expanduser("/home/elon-1/projects/prediction-market-backtesting")
 sys.path.insert(0, TOOL_ROOT)
 sys.path.insert(0, NAUTILUS_ROOT)
@@ -42,8 +42,9 @@ from prediction_market_extensions.backtesting.data_sources import (
 )
 from prediction_market_extensions.adapters.prediction_market.replay import ReplayLoadRequest
 
-# ── Whale follower strategy ──
-from strategies.whale_follower import WhaleFollower, WhaleFollowerConfig
+# ── Whale follower strategy (deferred — only needed when actually running backtests) ──
+# Imported lazily inside main() / _run_whale_pmxt_backtest_for_market()
+# to allow --whale-mode --help to work without requiring the full module chain.
 
 
 async def load_pmxt_data(market_slug, start_time, end_time, token_index=0):
@@ -73,6 +74,7 @@ async def load_pmxt_data(market_slug, start_time, end_time, token_index=0):
 
 def run_backtest(loaded_replay, bankroll=10000.0, kelly_fraction=0.25):
     """Run whale follower backtest with pre-loaded PMXT data."""
+    from strategies.whale_follower import WhaleFollower, WhaleFollowerConfig  # lazy
     instrument = loaded_replay.instrument
     records = loaded_replay.records
 
@@ -119,6 +121,7 @@ def run_backtest(loaded_replay, bankroll=10000.0, kelly_fraction=0.25):
 
 
 def main():
+    from strategies.whale_follower import WhaleFollower, WhaleFollowerConfig  # lazy
     parser = argparse.ArgumentParser(description="Whale follower PMXT backtest")
     parser.add_argument("--market-slug", default="will-ludvig-aberg-win-the-2026-masters-tournament")
     parser.add_argument("--start", default="2026-04-05T00:00:00Z")
@@ -143,9 +146,6 @@ def main():
 
     print(f"\nDone. Analyzed {loaded.count} book events.")
 
-
-if __name__ == "__main__":
-    main()
 
 
 # ── Phase 1.4: PMXT Whale Backtest ─────────────────────────────────────────────
