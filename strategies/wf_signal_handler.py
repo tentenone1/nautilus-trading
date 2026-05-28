@@ -127,9 +127,18 @@ class SignalHandler:
         """
         self.log.info(f"[DEBUG] _on_signal called for {signal.condition_id[:20]}... cond={signal.confidence:.2f}")
 
+        # TRACE LOG 1: Method entry — unmissable, cannot be filtered
+        # If this doesn't appear in dashboard.log after restart, the module is stale.
+        _entry_whale = getattr(signal, 'whale_name', 'UNKNOWN') or 'UNKNOWN'
+        self.log.warning(
+            f"TRACE_ENTER | handle_signal | whale={_entry_whale} | "
+            f"ts={time.time():.0f} | cond={signal.condition_id[:12]}..."
+        )
+
         # ── Phase 0: DecisionSnapshot — create at signal entry ──
         _snap = {
             "signal_id": str(uuid.uuid4()),
+            "trace_id": str(uuid.uuid4())[:8],
             "source": getattr(signal, 'source', 'unknown') or 'unknown',
             "category": getattr(signal, 'market_category', '') or '',
             # P0 FIX: raw_category, normalized_category, category_confidence fields.
@@ -168,8 +177,9 @@ class SignalHandler:
             "position_size_usd": 0.0,
             "config_version": ACTIVE_CONFIG_VERSION,
             "shadow_mode": 1 if SHADOW_MODE else 0,
-            "metadata_json": "",
+            "metadata_json": json.dumps({"trace_id": str(uuid.uuid4())[:8]}),
         }
+        _trace_id = _snap["metadata_json"]  # used in TRACE_PHASE2 log below
 
         # ── P0 FIX: Category fallback inference ───────────────────────────────────────
         # If the signal source sent an empty market_category (common for sybil signals),
@@ -205,7 +215,12 @@ class SignalHandler:
         try:
             from strategies.wf_category_action import get_category_action as _get_cat_action
             _action_result = _get_cat_action(_whale, _cat_normalized)
-        except Exception:
+        except Exception as _e:
+            # TRACE LOG 2: Exception in get_category_action — catch silent failures
+            self.log.warning(
+                f"TRACE_EXCEPTION | get_category_action failed | whale={_whale} | "
+                f"cat={_cat_normalized} | error={_e}"
+            )
             _action_result = {
                 "action": "INSUFFICIENT_DATA",
                 "action_confidence": 0.0,
@@ -214,6 +229,19 @@ class SignalHandler:
             }
         _snap["category_action"] = _action_result["action"]
         _snap["category_action_confidence"] = _action_result["action_confidence"]
+
+        # ── DEBUG: verify category_action is set before any insert ──
+        self.log.warning(
+            f"DBG_PREINSERT | whale={_whale} | category_action={_snap.get('category_action','MISSING')} | "
+            f"snap_keys={list(_snap.keys())}"
+        )
+
+        # TRACE LOG 3: Phase 2 completed — confirms classifier ran to completion
+        self.log.warning(
+            f"TRACE_PHASE2 | whale={_whale} | cat={_cat_normalized} | "
+            f"action={_action_result['action']} | conf={_action_result['action_confidence']:.0%} | "
+            f"trace={_snap.get('trace_id','?')}"
+        )
 
         self.log.info(
             f"CLASSIFY | {_whale} | {_cat_normalized} | "
@@ -773,6 +801,8 @@ class SignalHandler:
             for w in self._s._tracker.whales.values():
                 if w.name == signal.whale_name:
                     whale_wr = w.win_rate
+                    _snap["whale_wr"] = w.win_rate
+                    _snap["whale_sample_size"] = w.total_trades
                     break
             if whale_wr is None:
                 self.log.debug(f"Whale '{signal.whale_name}' not found in tracker, using default Kelly")

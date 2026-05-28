@@ -656,6 +656,8 @@ def insert_decision_snapshot(
     # Phase 2: whale_category_classifier — FOLLOW / FADE / NEUTRAL / INSUFFICIENT_DATA
     category_action: str = "INSUFFICIENT_DATA",
     category_action_confidence: float = 0.0,
+    # trace_id: accepted but not stored separately — already embedded in metadata_json
+    trace_id: str = "",
     db_path: str | None = None,
 ) -> bool:
     """Insert a decision snapshot record into the decision_snapshots table.
