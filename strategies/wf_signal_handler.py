@@ -196,6 +196,7 @@ class SignalHandler:
                         _snap["final_decision"] = "REJECT"
                         meta = {"sports_telemetry": True, "would_have_traded": True}
                         _snap["metadata_json"] = json.dumps(meta)
+                        _snap["passed_execution_checks"] = 1
                         insert_decision_snapshot(**_snap)
                         self.log.info(
                             f"SPORTS_TELEMETRY | sports signal logged to decision_snapshots | "
@@ -215,6 +216,7 @@ class SignalHandler:
                         "telemetry_tagged": True,
                     }
                     _snap["metadata_json"] = json.dumps(meta)
+                    _snap["passed_execution_checks"] = 0
                     insert_decision_snapshot(**_snap)
                     self.log.info(
                         f"SPORTS_TELEMETRY | sports signal logged to decision_snapshots | "
@@ -236,6 +238,7 @@ class SignalHandler:
                 _snap["edge_score"]              = pipeline_result.edge_score
                 _snap["reject_reason"]            = pipeline_result.reject_reason
                 _snap["final_decision"]           = "REJECT"
+                _snap["passed_execution_checks"]   = 0
                 insert_decision_snapshot(**_snap)
                 return
 
@@ -324,9 +327,16 @@ class SignalHandler:
                     self.pipeline is not None
                     and getattr(pipeline_result, 'should_trade', False)
                 )
+                # BUGFIX: Do NOT insert snapshot here. enter_position() is called immediately
+                # after this block in Step 10, and its SHADOW_MODE handler (position_manager.py
+                # line ~560) correctly sets passed_execution_checks=1 and inserts there.
+                # The old insert_decision_snapshot call here created duplicate SHADOW_TRADE
+                # rows with passed_execution_checks=-1 (never set), corrupting telemetry.
+                # Just log and fall through — enter_position() will write the clean snapshot.
                 if SHADOW_MODE and _pipeline_passed:
                     _snap["final_decision"] = "SHADOW_TRADE"
                     _snap["reject_reason"]  = "shadow_mode_block"
+                    _snap["passed_execution_checks"] = 1  # pipeline passed, blocked at execution
                     _snap["metadata_json"] = json.dumps({
                         "sports_telemetry": True,
                         "would_have_traded": True,
@@ -334,14 +344,15 @@ class SignalHandler:
                         "handler_step2": True,
                         "block_reason": block_reason,
                     })
-                    insert_decision_snapshot(**_snap)
                     self.log.info(
                         f"SHADOW_TRADE | sports signal passed pipeline, blocked at handler | "
-                        f"whale={signal.whale_name} | reason={block_reason}"
+                        f"whale={signal.whale_name} | reason={block_reason} | "
+                        f"enter_position will write clean snapshot"
                     )
-                    return
-                if SPORTS_TELEMETRY_MODE:
+                    # fall through to Step 10 (enter_position)
+                elif SPORTS_TELEMETRY_MODE:
                     _snap["reject_reason"]  = "sports_handler_quarantine"
+                    _snap["passed_execution_checks"] = 0   # BUGFIX: was left at -1
                     _snap["final_decision"] = "REJECT"
                     _snap["metadata_json"] = json.dumps({
                         "sports_telemetry": True,
@@ -359,6 +370,7 @@ class SignalHandler:
         if not self.config.auto_trade:
             self.log.debug("Auto-trade disabled, skipping signal execution")
             _snap["passed_risk_manager"] = 0
+            _snap["passed_execution_checks"] = 0   # BUGFIX: was left at -1
             _snap["final_decision"]       = "REJECT"
             _snap["reject_reason"]         = "auto_trade_disabled"
             insert_decision_snapshot(**_snap)
@@ -380,6 +392,7 @@ class SignalHandler:
             if self._s._kill_switch_breached:
                 self.log.warning("KILL_SWITCH active - rejecting signal")
                 _snap["passed_risk_manager"] = 0
+                _snap["passed_execution_checks"] = 0   # BUGFIX: was left at -1
                 _snap["final_decision"]       = "REJECT"
                 _snap["reject_reason"]         = "kill_switch_active"
                 insert_decision_snapshot(**_snap)
@@ -392,6 +405,7 @@ class SignalHandler:
                 f"skipping: {signal.whale_name}"
             )
             _snap["passed_risk_manager"] = 0
+            _snap["passed_execution_checks"] = 0   # BUGFIX: was left at -1
             _snap["final_decision"]       = "REJECT"
             _snap["reject_reason"]         = "fade_concurrency_limit"
             insert_decision_snapshot(**_snap)
@@ -460,6 +474,7 @@ class SignalHandler:
         if mc_lower in BLOCKED_CATEGORIES:
             self.log.info(f"BLOCKED category={mc_lower} | {signal.condition_id[:50]}")
             _snap["passed_category_filter"] = 0
+            _snap["passed_execution_checks"] = 0   # BUGFIX: was left at -1
             _snap["final_decision"] = "REJECT"
             _snap["reject_reason"] = "blocked_category"
             insert_decision_snapshot(**_snap)
@@ -481,6 +496,7 @@ class SignalHandler:
                 _snap["passed_category_filter"] = 0
                 _snap["final_decision"] = "REJECT"
                 _snap["reject_reason"] = "paper_only_category"
+                _snap["passed_execution_checks"] = 0
                 insert_decision_snapshot(**_snap)
                 return
             self.log.info(
@@ -654,6 +670,23 @@ class SignalHandler:
                 self.pipeline is not None
                 and getattr(pipeline_result, 'should_trade', False)
             ),
+        )
+        # ── P1 DIAGNOSTIC: log pipeline gate outcome for every signal ──────────
+        _pipe_none = self.pipeline is None
+        _should_trade = getattr(pipeline_result, 'should_trade', False)
+        _reject_reason = getattr(pipeline_result, 'reject_reason', '')
+        _passed_cat = getattr(pipeline_result, 'passed_category_filter', -1)
+        _passed_quar = getattr(pipeline_result, 'passed_quarantine', -1)
+        _passed_bl = getattr(pipeline_result, 'passed_blacklist', -1)
+        _passed_edge = getattr(pipeline_result, 'passed_edge_threshold', -1)
+        _passed_fade = getattr(pipeline_result, 'passed_fade_eligibility', -1)
+        _log_fn = self.log.warning if _pipe_none or not _should_trade else self.log.debug
+        _log_fn(
+            f"[PIPELINE_GATE] cond={signal.condition_id[:30]} wh={signal.whale_name} "
+            f"pipe_none={_pipe_none} should_trade={_should_trade} "
+            f"reject_reason={_reject_reason} "
+            f"gate_flags=[cat:{_passed_cat} quar:{_passed_quar} bl:{_passed_bl} "
+            f"edge:{_passed_edge} fade:{_passed_fade}]"
         )
 
         self._s._update_gap_state(signal)
