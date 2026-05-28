@@ -79,6 +79,7 @@ class EdgeResult:
     source: str                    # "classifier" | "fallback" | "static"
     should_trade: bool             # Whether to enter this trade
     side_flip: bool                # Whether to flip the signal side (for fade)
+    poly_enriched: bool = False    # Whether poly_data stats enriched this signal
 
 
 class EdgeScorer:
@@ -347,9 +348,6 @@ class EdgeScorer:
             return EdgeResult(
                 edge_score=round(min(fallback_edge, 0.5), 3),  # cap fallback at 0.5
                 raw_edge=fallback_edge,
-                # v5.6 fix: non-sybil unknowns use "copy" with conservative edge=0.20
-                # instead of "ignore". The "ignore" action killed our best BUY signal
-                # sources when they weren't in whale_classifications.json.
                 action="copy" if not is_sybil else "fade",
                 action_confidence=0.1 if not is_sybil else 0.3,
                 whale_trust=1.0 if not is_sybil else 3.0,
@@ -357,6 +355,7 @@ class EdgeScorer:
                 source="fallback" if not is_sybil else "fallback_sybil",
                 should_trade=fallback_edge >= (min_edge if not is_sybil else min_fallback),
                 side_flip=is_sybil,  # Fade sybil clusters by default
+                poly_enriched=False,
             )
 
         # ── Step 2: Compute whale action edge ─────────────────────────────
@@ -383,6 +382,7 @@ class EdgeScorer:
                 source="classifier",
                 should_trade=False,
                 side_flip=False,
+                poly_enriched=False,
             )
 
         # ── Step 3: Get trust score for this whale in this category ────────
@@ -405,12 +405,42 @@ class EdgeScorer:
         elif trust < TRUST_LOW_THRESHOLD:
             raw_edge *= TRUST_LOW_SUPPRESS
 
-        # ── Step 7: Confidence modulation ──────────────────────────────────
+        # ── Step 7: Poly Data enrichment boost ─────────────────────────────────
+        # Boost for whales that are linked to poly_data (high-volume traders)
+        poly_stats, poly_enriched = self._get_poly_enrichment(whale_name)
+        if poly_enriched:
+            classification = poly_stats.get("classification", "unknown")
+            total_volume = float(poly_stats.get("total_volume_usd", 0) or 0)
+            trades_per_day = float(poly_stats.get("trades_per_day", 0) or 0)
+
+            # Boost confidence for skilled humans, reduce for bots
+            if classification == "skilled_human":
+                action_confidence = min(1.0, action_confidence + 0.15)
+                raw_edge *= 1.10  # +10% edge for verified skilled humans
+                logger.debug(
+                    "Poly boost: %s skilled_human vol=%.0f tpd=%.1f → boosted",
+                    whale_name, total_volume, trades_per_day,
+                )
+            elif classification == "trading_bot":
+                action_confidence = max(0.0, action_confidence - 0.10)
+                raw_edge *= 0.85  # -15% edge for bots
+                logger.debug(
+                    "Poly boost: %s trading_bot → suppressed",
+                    whale_name,
+                )
+
+            # Volume and activity bonuses
+            if total_volume > 100_000:
+                raw_edge *= 1.05  # +5% edge for whales with >$100K volume
+            if trades_per_day > 5:
+                raw_edge *= 1.03  # +3% for active traders (>5 trades/day)
+
+        # ── Step 8: Confidence modulation ──────────────────────────────────
         # Low-confidence signals should not get high edge
         confidence_multiplier = 0.5 + (confidence * 0.5)  # range 0.5-1.0
         raw_edge *= confidence_multiplier
 
-        # ── Step 8: Clamp and calibrate ────────────────────────────────────
+        # ── Step 9: Clamp and calibrate ────────────────────────────────────
         # Map raw_edge (0-2ish) to calibrated edge (0-1)
         # Using sigmoid-like compression for extreme values
         calibrated_edge = raw_edge / (1.0 + raw_edge)  # maps (0,∞) → (0,1)
@@ -422,12 +452,13 @@ class EdgeScorer:
             edge_score=round(calibrated_edge, 3),
             raw_edge=round(raw_edge, 3),
             action=action,
-            action_confidence=action_confidence,
+            action_confidence=round(action_confidence, 3),
             whale_trust=trust,
             category_weight=cat_weight,
             source="classifier",
             should_trade=should_trade,
             side_flip=side_flip,
+            poly_enriched=poly_enriched,
         )
 
     def score_signal_simple(
@@ -449,6 +480,36 @@ class EdgeScorer:
             confidence=confidence,
             side=side,
         )
+
+    # ── Poly Data Enrichment ────────────────────────────────────────────────
+
+    def _get_poly_enrichment(self, whale_name: str) -> tuple[dict, bool]:
+        """Query poly_data for this whale's stats from trades.db.
+
+        Returns (stats_dict, enriched) where enriched=True if data found.
+        Only returns data for whales that are linked via poly_address_map.
+        """
+        import sqlite3
+        try:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.row_factory = sqlite3.Row
+            cur = conn.execute(
+                """
+                SELECT ps.*, pam.nautilus_whale_name
+                FROM poly_whale_stats ps
+                JOIN poly_address_map pam ON LOWER(pam.address) = LOWER(ps.address)
+                WHERE pam.nautilus_whale_name = ?
+                LIMIT 1
+                """,
+                (whale_name,),
+            )
+            row = cur.fetchone()
+            conn.close()
+            if row:
+                return dict(row), True
+            return {}, False
+        except Exception:
+            return {}, False
 
     # ── Trust Helpers ─────────────────────────────────────────────────────
 

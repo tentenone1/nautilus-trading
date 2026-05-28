@@ -91,8 +91,14 @@ class PipelineResult:
     sybil_decision: str = ""
     edge_result: Optional[EdgeResult] = None
     whale_type: str = ""  # Whale classification for data segmentation
+    size_multiplier: float = 1.0  # Market health multiplier: <1.0 reduces position size
     skip_edge_scorer: bool = False  # v5.6: bypass edge scorer for premium signal sources
     sports_telemetry_mode: bool = False  # L2: route sports signal through snapshot before blocking
+    # ── Per-category classifier result (set in wf_signal_handler after pipeline) ──
+    # Added in T4: wires classifier telemetry through to decision snapshots.
+    # Values: "FOLLOW" | "FADE" | "NEUTRAL" | "INSUFFICIENT_DATA" | "unknown"
+    classifier_action: str = "unknown"
+    classifier_confidence: float = 0.0
     # ── DecisionSnapshot gate tracking (Phase 0 observability) ──
     passed_category_filter: int = -1   # 1=passed, 0=rejected, -1=not evaluated
     passed_quarantine: int = -1
@@ -196,7 +202,7 @@ class SignalPipeline:
             _analyzer_path = _AP("/home/elon-1/workspace/nautilus-trading/data/polymarket_analyzer_snapshot.json")
             if _analyzer_path.exists():
                 self._analyzer_snapshot = json.loads(_analyzer_path.read_text())
-                _mkts = self._analyzer_snapshot.get("markets", [])
+                _mkts = self._analyzer_snapshot.get("market_snapshots", [])
                 if _mkts:
                     logger.info("Loaded analyzer snapshot: %d markets", len(_mkts))
         except Exception:
@@ -382,6 +388,29 @@ class SignalPipeline:
             result.passed_blacklist = 0
             result.reject_reason = "intel_hard_reject"
             return result
+
+        # ── Stage 2b: Market health filter (polymarket-analyzer) ──────────────
+        # Skip or reduce poor-health markets: wide spread or low volume
+        liq = self.get_market_liquidity(signal.condition_id)
+        if liq:
+            health = liq.get("health", "")
+            spread = float(liq.get("spread", 0) or 0)
+            volume = float(liq.get("volume_24h", 0) or 0)
+            if log and (spread > 0.05 or volume < 1000):
+                log.info(
+                    f"PIPELINE_INFO | market_health | slug={liq.get('slug', '')} "
+                    f"health={health} spread={spread:.4f} vol={volume:.0f}"
+                )
+            # Poor-health markets: reduce size by 50%
+            if health == "poor":
+                result.size_multiplier = 0.5
+                if log:
+                    log.info(f"PIPELINE_INFO | size_reduced | poor_market_health | mult=0.5")
+            # Concentrated markets: higher manipulation risk, reduce size
+            elif health == "concentrated":
+                result.size_multiplier = 0.5
+                if log:
+                    log.info(f"PIPELINE_INFO | size_reduced | concentrated_market | mult=0.5")
 
         # ── Stage 3: Whale blacklist (fade by default, hard-reject only sacrificial) ─
         # v5.0-emergency-fix: All blacklist fades now require statistical confirmation:
@@ -696,15 +725,23 @@ class SignalPipeline:
 
 
     def get_market_liquidity(self, condition_id: str) -> dict:
-        # Get market liquidity from analyzer snapshot
-        for m in self._analyzer_snapshot.get("markets", []):
-            if m.get("conditionId", "").lower() == condition_id.lower():
+        """Get market liquidity from analyzer snapshot (supports both old and new snapshot formats)."""
+        # Support both old format (markets[]) and new format (market_snapshots[])
+        snapshot = self._analyzer_snapshot or {}
+        markets = snapshot.get("market_snapshots") or snapshot.get("markets") or []
+        for m in markets:
+            # Try both field name formats
+            snap_condition_id = m.get("condition_id") or m.get("conditionId", "")
+            if snap_condition_id.lower() == condition_id.lower():
+                best_bid = float(m.get("best_bid") or m.get("bestBid") or 0)
+                best_ask = float(m.get("best_ask") or m.get("bestAsk") or 0)
                 return {
-                    "volume_24h": m.get("volume24hr", 0),
-                    "best_bid": m.get("bestBid", 0),
-                    "best_ask": m.get("bestAsk", 0),
-                    "spread": m.get("bestAsk", 1) - m.get("bestBid", 0),
+                    "volume_24h": float(m.get("volume24hr", 0) or 0),
+                    "best_bid": best_bid,
+                    "best_ask": best_ask,
+                    "spread": best_ask - best_bid,
                     "slug": m.get("slug", ""),
+                    "health": m.get("health", ""),
                 }
         return {}
 
