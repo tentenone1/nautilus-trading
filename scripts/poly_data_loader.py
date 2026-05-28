@@ -341,8 +341,32 @@ def load_goldsky_fills() -> dict:
     return dict(address_data)
 
 
+def _load_wallet_registry() -> dict[str, str]:
+    """Load address→name mapping from known_whale_wallets.json."""
+    registry_path = Path("/home/elon-1/workspace/nautilus-trading/config/known_whale_wallets.json")
+    if not registry_path.exists():
+        logger.warning("known_whale_wallets.json not found at %s", registry_path)
+        return {}
+    try:
+        raw = json.loads(registry_path.read_text())
+        # Skip metadata keys (those starting with _)
+        return {
+            addr.lower(): name
+            for name, addr in raw.items()
+            if not name.startswith("_") and addr and isinstance(addr, str)
+        }
+    except Exception as e:
+        logger.error("Failed to load wallet registry: %s", e)
+        return {}
+
+
 def link_nautilus_whales(db: sqlite3.Connection, poly_stats: dict) -> None:
-    """Link poly_data addresses to nautilus whale names via address overlap."""
+    """Link poly_data addresses to nautilus whale names via known_whale_wallets.json + trades table."""
+    # Source 1: known_whale_wallets.json (primary — all 26 tracked whales with addresses)
+    registry = _load_wallet_registry()
+    logger.info("Loaded %d whales from known_whale_wallets.json", len(registry))
+
+    # Source 2: trades table (supplementary — only whales with trades that have addresses)
     nautilus_addrs = dict(
         db.execute(
             "SELECT LOWER(whale_address), whale_name FROM trades "
@@ -351,19 +375,26 @@ def link_nautilus_whales(db: sqlite3.Connection, poly_stats: dict) -> None:
         ).fetchall()
     )
 
+    # Merge both sources, registry takes priority (more complete)
+    all_addrs = {**nautilus_addrs, **registry}
+
     linked = 0
     for addr, stats in poly_stats.items():
-        name = nautilus_addrs.get(addr)
+        name = all_addrs.get(addr)
         if name:
             stats["nautilus_whale_name"] = name
+            source = "wallet_registry" if addr in registry else "trades_db"
             db.execute(
                 "INSERT OR REPLACE INTO poly_address_map (address, nautilus_whale_name, nautilus_source, match_type) "
-                "VALUES (?, ?, 'trades_db', 'address_overlap')",
-                (addr, name),
+                "VALUES (?, ?, ?, 'address_overlap')",
+                (addr, name, source),
             )
             linked += 1
 
-    logger.info("Linked %d addresses to nautilus whale names", linked)
+    logger.info("Linked %d addresses to nautilus whale names (registry=%d, trades=%d)",
+                linked,
+                sum(1 for addr in poly_stats if addr in registry),
+                linked - sum(1 for addr in poly_stats if addr in registry))
 
 
 def load_market_stats() -> dict:
