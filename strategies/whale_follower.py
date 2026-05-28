@@ -310,6 +310,9 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
     # and by the autoresearch signal pipeline. Populated at runtime or via config.
     ignored_markets: list[str] = []
 
+    # Backtest mode: skip live API calls (sybil scans, whale position fetches, LLM analysis)
+    backtest: bool = False
+
     # Backward compat: allow single instrument_id
     @property
     def instrument_id(self) -> InstrumentId:
@@ -875,10 +878,10 @@ class WhaleFollower(Strategy):
             log_func=self.log.warning,
         )
 
-    def _on_signal(self, signal: WhaleSignal) -> None:
+    def _on_signal(self, whale_sig: WhaleSignal) -> None:
         """Delegate signal handling to SignalHandler."""
         if self._signal_handler is not None:
-            self._signal_handler.handle_signal(signal)
+            self._signal_handler.handle_signal(whale_sig)
 
     def _find_instrument(self, condition_id: str) -> InstrumentId | None:
         """Delegate instrument lookup to SignalHandler."""
@@ -1011,16 +1014,20 @@ class WhaleFollower(Strategy):
         
         # Whale position scanning (moved here from on_quote_tick so it runs
         # independently of WebSocket data flow — critical for reliability)
-        if now - self._last_scan >= self.config.scan_interval_secs:
+        if not self.config.backtest and now - self._last_scan >= self.config.scan_interval_secs:
             self._scan_whale_positions()
             self._last_scan = now
-        
+
         # Autoresearch LLM signal bridge — check for model-generated trade recommendations
-        self._check_autoresearch_signals()
-        
+        # (live API call — skip in backtest mode)
+        if not self.config.backtest:
+            self._check_autoresearch_signals()
+
         # Sybil meta-whale signal bridge — conservative integration
         # Applies 65-72% confidence filter + $100 max position
-        self._check_sybil_signals()
+        # (live API call — skip in backtest mode)
+        if not self.config.backtest:
+            self._check_sybil_signals()
         
         # Memory pressure check - graceful restart before OOM
         # Cross-platform: resource.getrusage works on macOS and Linux
@@ -1079,7 +1086,8 @@ class WhaleFollower(Strategy):
 
 
         # P2: Sybil intelligence monitoring (every timer tick)
-        if run_sybil_monitoring:
+        # (live API call — skip in backtest mode)
+        if not self.config.backtest and run_sybil_monitoring:
             try:
                 sybil_report = run_sybil_monitoring()
                 if sybil_report and not sybil_report.get("error"):
