@@ -4,10 +4,18 @@ Provides get_category_action() — the single integration point for the signal
 pipeline. Reads data/whale_category_classifications.json (built by
 scripts/build_category_classifier.py from the historical trade DB).
 
-Lookup hierarchy:
+Lookup hierarchy (v6.0):
     1. whale + specific category  → category-specific action (highest priority)
-    2. whale + no category data   → global action fallback
-    3. whale not in file          → INSUFFICIENT_DATA (default)
+    2. whale + no category data → global action fallback
+    3. whale in pending_whales  → INSUFFICIENT_DATA (probation — see below)
+    4. whale not in file       → INSUFFICIENT_DATA (default)
+
+Probation system (v6.0):
+    Whales discovered by discover_whales_cron.py that are not yet in the
+    classifier JSON are placed in pending_whales with status='probation'.
+    They remain INSUFFICIENT_DATA until they accumulate >= 10 observed trades.
+    The classifier is rebuilt by build_category_classifier.py (run periodically)
+    which promotes eligible pending whales into the JSON.
 
 Actions: FOLLOW | FADE | NEUTRAL | INSUFFICIENT_DATA
 """
@@ -15,6 +23,7 @@ Actions: FOLLOW | FADE | NEUTRAL | INSUFFICIENT_DATA
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any
@@ -25,10 +34,17 @@ _CACHE_TTL_SECONDS = 60.0
 # Project data directory
 _DATA_DIR = Path(__file__).parent.parent / "data"
 _CLASSIFICATIONS_PATH = _DATA_DIR / "whale_category_classifications.json"
+_DISCOVERY_DB_PATH   = _DATA_DIR / "whale_discovery.db"
 
-# Module-level cache
+# Probation threshold: whales need >= 10 observed trades before classification
+_PROBATION_MIN_TRADES = 10
+
+# Module-level caches
 _cached_data: dict[str, Any] | None = None
 _cache_load_time: float = 0.0
+_pending_cache: dict[str, dict] | None = None
+_pending_cache_time: float = 0.0
+_PENDING_CACHE_TTL: float = 30.0   # shorter TTL — pending whales change more frequently
 
 
 def _load_classifications() -> dict[str, Any]:
@@ -44,11 +60,52 @@ def _load_classifications() -> dict[str, Any]:
     return _cached_data
 
 
+def _load_pending_whales() -> dict[str, dict]:
+    """Load pending_whales from the discovery DB.
+
+    Returns a dict keyed by whale_name → {status, observed_trades, ...}.
+    Only probation whales (status='probation') are returned.
+    """
+    global _pending_cache, _pending_cache_time
+    now = time.monotonic()
+    if _pending_cache is not None and (now - _pending_cache_time) < _PENDING_CACHE_TTL:
+        return _pending_cache
+    _pending_cache = {}
+    if not _DISCOVERY_DB_PATH.exists():
+        return {}
+    try:
+        conn = sqlite3.connect(str(_DISCOVERY_DB_PATH))
+        conn.execute("PRAGMA busy_timeout=5000")
+        rows = conn.execute("""
+            SELECT whale_name, status, observed_trades,
+                   win_rate, avg_pnl, total_pnl, updated_at
+            FROM pending_whales
+            WHERE status = 'probation'
+        """).fetchall()
+        conn.close()
+        for (name, status, trades, wr, avg_pnl, total_pnl, updated_at) in rows:
+            if name:
+                _pending_cache[str(name)] = {
+                    "status": status,
+                    "observed_trades": trades,
+                    "win_rate": wr or 0.0,
+                    "avg_pnl": avg_pnl or 0.0,
+                    "total_pnl": total_pnl or 0.0,
+                    "updated_at": updated_at,
+                }
+    except Exception:
+        pass
+    _pending_cache_time = now
+    return _pending_cache
+
+
 def invalidate_cache() -> None:
-    """Force the next call to re-load from disk."""
-    global _cached_data, _cache_load_time
+    """Force the next call to re-load from disk (both classifier JSON and pending DB)."""
+    global _cached_data, _cache_load_time, _pending_cache, _pending_cache_time
     _cached_data = None
     _cache_load_time = 0.0
+    _pending_cache = None
+    _pending_cache_time = 0.0
 
 
 def get_category_action(
@@ -69,7 +126,7 @@ def get_category_action(
         {
             "action":             "FOLLOW" | "FADE" | "NEUTRAL" | "INSUFFICIENT_DATA",
             "action_confidence":  float 0.0–1.0,
-            "source":             "category_specific" | "global_fallback" | "default",
+            "source":             "category_specific" | "global_fallback" | "probation" | "default",
             "stats": {
                 "total_trades":   int,
                 "win_rate":       float,
@@ -122,7 +179,27 @@ def get_category_action(
                 },
             }
 
-    # 3. Unknown whale — default
+    # 3. Check pending_whales — newly discovered whales in probation
+    # (not yet in the classifier JSON, but tracked in the DB)
+    pending = _load_pending_whales()
+    if whale_name in pending:
+        pd = pending[whale_name]
+        trades = pd["observed_trades"]
+        return {
+            "action": "INSUFFICIENT_DATA",
+            "action_confidence": round(min(trades / _PROBATION_MIN_TRADES, 1.0) * 0.5, 3),
+            # Confidence grows as whale accumulates trades toward the 10-trade minimum
+            # 0 trades → 0.0, 10 trades → 0.5 (still insufficient but building evidence)
+            "source": "probation",
+            "stats": {
+                "total_trades": trades,
+                "win_rate": pd["win_rate"],
+                "avg_pnl": pd["avg_pnl"],
+                "total_pnl": pd["total_pnl"],
+            },
+        }
+
+    # 4. Unknown whale — default
     return {
         "action": "INSUFFICIENT_DATA",
         "action_confidence": 0.3,

@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-28T07:14:18.192132+00:00",
+  "updated_at": "2026-05-28T08:19:27.499571+00:00",
   "sources": [
     {
       "source": "/home/elon-1/workspace/nautilus-trading/data/whale_discovery.db",
@@ -145,6 +145,16 @@
         "losses": 0,
         "action": "NEUTRAL",
         "action_confidence": 0.931
+      },
+      "sports": {
+        "total_trades": 8,
+        "win_rate": 0.625,
+        "avg_pnl": 56.66,
+        "total_pnl": 453.27,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.514
       }
     }
   },
@@ -448,6 +458,16 @@
         "losses": 0,
         "action": "NEUTRAL",
         "action_confidence": 0.5
+      },
+      "geopolitics": {
+        "total_trades": 3,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 0.0,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
       }
     }
   },
@@ -629,6 +649,16 @@
         "losses": 0,
         "action": "FOLLOW",
         "action_confidence": 0.661
+      },
+      "sports": {
+        "total_trades": 4,
+        "win_rate": 0.0,
+        "avg_pnl": -24.49,
+        "total_pnl": -97.95,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
       }
     }
   },
@@ -1111,6 +1141,16 @@
         "losses": 0,
         "action": "NEUTRAL",
         "action_confidence": 0.5
+      },
+      "sports": {
+        "total_trades": 4,
+        "win_rate": 0.5,
+        "avg_pnl": 38.57,
+        "total_pnl": 154.28,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
       }
     }
   },
@@ -1159,6 +1199,16 @@
         "losses": 0,
         "action": "NEUTRAL",
         "action_confidence": 0.5
+      },
+      "crypto": {
+        "total_trades": 17,
+        "win_rate": 0.4118,
+        "avg_pnl": 1.6,
+        "total_pnl": 27.19,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.557
       }
     }
   },
@@ -1292,6 +1342,16 @@
         "losses": 0,
         "action": "NEUTRAL",
         "action_confidence": 0.5
+      },
+      "sports": {
+        "total_trades": 7,
+        "win_rate": 0.2857,
+        "avg_pnl": 7.63,
+        "total_pnl": 53.38,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.509
       }
     }
   },
@@ -1374,6 +1434,16 @@
         "losses": 0,
         "action": "FOLLOW",
         "action_confidence": 0.846
+      },
+      "sports": {
+        "total_trades": 219,
+        "win_rate": 0.0731,
+        "avg_pnl": 54.86,
+        "total_pnl": 12013.85,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
       }
     }
   },
@@ -1605,6 +1675,16 @@
         "losses": 0,
         "action": "FOLLOW",
         "action_confidence": 0.524
+      },
+      "sports": {
+        "total_trades": 7,
+        "win_rate": 0.4286,
+        "avg_pnl": 49.15,
+        "total_pnl": 344.03,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.509
       }
     }
   },
@@ -1629,6 +1709,16 @@
         "losses": 0,
         "action": "NEUTRAL",
         "action_confidence": 0.5
+      },
+      "sports": {
+        "total_trades": 9,
+        "win_rate": 0.3333,
+        "avg_pnl": -18.47,
+        "total_pnl": -166.24,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.519
       }
     }
   },
@@ -1751,6 +1841,16 @@
         "losses": 0,
         "action": "FOLLOW",
         "action_confidence": 0.552
+      },
+      "sports": {
+        "total_trades": 8,
+        "win_rate": 0.625,
+        "avg_pnl": 21.74,
+        "total_pnl": 173.95,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.514
       }
     }
   },
@@ -1982,6 +2082,16 @@
         "losses": 0,
         "action": "NEUTRAL",
         "action_confidence": 0.95
+      },
+      "sports": {
+        "total_trades": 5,
+        "win_rate": 0.2,
+        "avg_pnl": -20.16,
+        "total_pnl": -100.79,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
       }
     }
   },
