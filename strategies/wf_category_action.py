@@ -39,12 +39,27 @@ _DISCOVERY_DB_PATH   = _DATA_DIR / "whale_discovery.db"
 # Probation threshold: whales need >= 10 observed trades before classification
 _PROBATION_MIN_TRADES = 10
 
+# Activity gate thresholds
+_ACTIVITY_SIGNAL_HOURS = 48        # whales must have signal in last 48h
+_ACTIVITY_DISCOVERY_DAYS = 7        # whales must be in discovery DB within 7 days
+
 # Module-level caches
 _cached_data: dict[str, Any] | None = None
 _cache_load_time: float = 0.0
 _pending_cache: dict[str, dict] | None = None
 _pending_cache_time: float = 0.0
 _PENDING_CACHE_TTL: float = 30.0   # shorter TTL — pending whales change more frequently
+
+# Active whale cache: names seen in decision_snapshots in last 48h
+_active_whale_cache: set[str] | None = None
+_active_whale_cache_time: float = 0.0
+_ACTIVE_CACHE_TTL: float = 300.0   # refresh every 5 min
+
+# Inactive override cache: whales that are INACTIVE (not seen recently)
+# Value: reason string
+_inactive_cache: dict[str, str] = {}
+_inactive_cache_time: float = 0.0
+_INACTIVE_CACHE_TTL = 60.0
 
 
 def _load_classifications() -> dict[str, Any]:
@@ -102,10 +117,104 @@ def _load_pending_whales() -> dict[str, dict]:
 def invalidate_cache() -> None:
     """Force the next call to re-load from disk (both classifier JSON and pending DB)."""
     global _cached_data, _cache_load_time, _pending_cache, _pending_cache_time
+    global _active_whale_cache, _active_whale_cache_time
     _cached_data = None
     _cache_load_time = 0.0
     _pending_cache = None
     _pending_cache_time = 0.0
+    _active_whale_cache = None
+    _active_whale_cache_time = 0.0
+
+
+def is_whale_active(whale_name: str, classifications_path: str | Path | None = None) -> tuple[bool, str]:
+    """
+    Check if a whale is currently "active" — either recently signaling or recently
+    rediscovered in the discovery DB.
+
+    Returns (is_active: bool, reason: str)
+    - is_active=True  → whale is generating signals or was recently rediscovered
+    - is_active=False → whale is INACTIVE (ghost), reason explains why
+    """
+    global _active_whale_cache, _active_whale_cache_time
+    global _inactive_cache, _inactive_cache_time
+    now = time.monotonic()
+
+    # Fast path: already cached as inactive
+    if whale_name in _inactive_cache:
+        _checked_at = _inactive_cache.get(whale_name, ("", 0.0))
+        if isinstance(_checked_at, tuple):
+            reason, checked_at = _checked_at
+        else:
+            reason, checked_at = _checked_at, 0.0
+        if now - checked_at < _INACTIVE_CACHE_TTL:
+            return False, reason
+        # TTL expired, re-check
+
+    # Refresh active whale cache if stale
+    if _active_whale_cache is None or (now - _active_whale_cache_time) > _ACTIVE_CACHE_TTL:
+        _active_whale_cache = _load_recent_signal_whales()
+        _active_whale_cache_time = now
+
+    if whale_name in _active_whale_cache:
+        # Whale was active in last 48h — clear any stale inactive cache entry
+        _inactive_cache.pop(whale_name, None)
+        return True, "active_recent_signal"
+
+    # Not in recent signals. Check discovery DB freshness.
+    path = Path(classifications_path) if classifications_path else _DISCOVERY_DB_PATH
+    discovery_fresh = _is_discovery_fresh(whale_name)
+    if discovery_fresh:
+        _inactive_cache.pop(whale_name, None)
+        return True, "active_recent_discovery"
+
+    # Neither condition met — INACTIVE
+    reason = (
+        f"ghost_whale: no signal in 48h and not rediscovered in "
+        f"discovery DB in {_ACTIVITY_DISCOVERY_DAYS}d"
+    )
+    _inactive_cache[whale_name] = reason
+    _inactive_cache_time = now
+    return False, reason
+
+
+def _load_recent_signal_whales() -> set[str]:
+    """Query decision_snapshots for all whale names seen in the last 48 hours."""
+    try:
+        conn = sqlite3.connect(str(_DATA_DIR / "trades.db"))
+        conn.execute("PRAGMA busy_timeout=5000")
+        cutoff = f"datetime('now', '-{_ACTIVITY_SIGNAL_HOURS} hours')"
+        rows = conn.execute(f"""
+            SELECT DISTINCT whale_name FROM decision_snapshots
+            WHERE timestamp >= {cutoff}
+              AND whale_name IS NOT NULL
+              AND whale_name != ''
+        """).fetchall()
+        conn.close()
+        return {str(r[0]) for r in rows if r[0]}
+    except Exception:
+        return set()
+
+
+def _is_discovery_fresh(whale_name: str) -> bool:
+    """Check if whale was in discovery DB updated within ACTIVITY_DISCOVERY_DAYS.
+
+    Treats updated_at=NULL as NOT fresh (those entries haven't been
+    refreshed by the discovery cron and should not pass the activity gate).
+    """
+    try:
+        conn = sqlite3.connect(str(_DISCOVERY_DB_PATH))
+        conn.execute("PRAGMA busy_timeout=5000")
+        cutoff = f"datetime('now', '-{_ACTIVITY_DISCOVERY_DAYS} days')"
+        # COALESCE ensures NULL updated_at fails the comparison
+        row = conn.execute(f"""
+            SELECT 1 FROM whales
+            WHERE name = ?
+              AND COALESCE(updated_at, '1970-01-01') >= {cutoff}
+        """, (whale_name,)).fetchone()
+        conn.close()
+        return row is not None
+    except Exception:
+        return False
 
 
 def get_category_action(
@@ -167,7 +276,7 @@ def get_category_action(
         # 2. Global fallback
         global_data = entry.get("global", {})
         if global_data:
-            return {
+            result = {
                 "action": global_data.get("global_action", "INSUFFICIENT_DATA"),
                 "action_confidence": global_data.get("global_action_confidence", 0.3),
                 "source": "global_fallback",
@@ -178,6 +287,13 @@ def get_category_action(
                     "total_pnl": global_data.get("total_pnl", 0.0),
                 },
             }
+            # Activity gate: ghost whales get INACTIVE regardless of classification
+            active, _ = is_whale_active(whale_name, classifications_path)
+            if not active:
+                result["action"] = "INACTIVE"
+                result["action_confidence"] = 0.05
+                result["source"] = "ghost_inactive"
+            return result
 
     # 3. Check pending_whales — newly discovered whales in probation
     # (not yet in the classifier JSON, but tracked in the DB)
