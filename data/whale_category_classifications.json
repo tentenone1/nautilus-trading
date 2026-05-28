@@ -1,0 +1,4632 @@
+{
+  "updated_at": "2026-05-28T07:14:18.192132+00:00",
+  "sources": [
+    {
+      "source": "/home/elon-1/workspace/nautilus-trading/data/whale_discovery.db",
+      "type": "whale_discovery_db",
+      "whale_count": 135,
+      "note": "live scan DB \u2014 updated every 6h by discover_whales_cron.py"
+    },
+    {
+      "source": "/home/elon-1/workspace/nautilus-trading/research/_trade_db_backup/backup-20260504-1323.db",
+      "type": "backup_trade_db",
+      "trade_count": 2693,
+      "note": "historical trade DB \u2014 provides per-category granularity backup DB lacks"
+    }
+  ],
+  "version": 2,
+  "05143": {
+    "global": {
+      "total_trades": 4,
+      "win_rate": 0.25,
+      "avg_pnl": 22.71,
+      "total_pnl": 90.82,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 4,
+        "win_rate": 0.25,
+        "avg_pnl": 22.71,
+        "total_pnl": 90.82,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-01 19:23:11.181451+00:00",
+        "last_trade": "2026-05-03 23:06:47.171722+00:00"
+      }
+    }
+  },
+  "0x1De39f5A4b1313B99fd5278036b2964cC03ca1fA-1777567197544": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 49.2,
+      "total_pnl": 49.2,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "0x20D6436849F930584892730C7F96eBB2Ac763856-1768642056357": {
+    "global": {
+      "total_trades": 18,
+      "win_rate": 0.32,
+      "avg_pnl": 828.57,
+      "total_pnl": 14914.263029408674,
+      "classification": "unknown",
+      "classification_confidence": 0.562,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.562
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 18,
+        "win_rate": 0.32,
+        "avg_pnl": 828.57,
+        "total_pnl": 14914.263029408674,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.562
+      }
+    }
+  },
+  "0x2a2C53bD278c04DA9962Fcf96490E17F3DfB9B": {
+    "global": {
+      "total_trades": 5,
+      "win_rate": 0.6,
+      "avg_pnl": 90.7,
+      "total_pnl": 453.48,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 5,
+        "win_rate": 0.6,
+        "avg_pnl": 90.7,
+        "total_pnl": 453.48,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-03 15:29:25.485240+00:00",
+        "last_trade": "2026-05-04 02:10:05.983248+00:00"
+      }
+    }
+  },
+  "0x492442EaB586F242B53bDa933fD5dE859c8A3782-1766317541188": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 278932.05,
+      "total_pnl": 278932.0502500017,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 278932.05,
+        "total_pnl": 278932.0502500017,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0x53757615de1c42b83f893b79d4241a009dc2aeea": {
+    "global": {
+      "total_trades": 96,
+      "win_rate": 0.18,
+      "avg_pnl": 446.41,
+      "total_pnl": 42855.83447914138,
+      "classification": "unknown",
+      "classification_confidence": 0.931,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.931
+    },
+    "categories": {
+      "other": {
+        "total_trades": 96,
+        "win_rate": 0.18,
+        "avg_pnl": 446.41,
+        "total_pnl": 42855.83447914138,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.931
+      }
+    }
+  },
+  "0x5d1d9cfd66ee3068c2a8a57dedf1e1b006dcafd2": {
+    "global": {
+      "total_trades": 9,
+      "win_rate": 1.0,
+      "avg_pnl": 117.65,
+      "total_pnl": 1058.82,
+      "classification": "unknown",
+      "classification_confidence": 0.519,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.519
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 9,
+        "win_rate": 1.0,
+        "avg_pnl": 117.65,
+        "total_pnl": 1058.82,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.519,
+        "first_trade": "2026-05-03 07:54:15.107798+00:00",
+        "last_trade": "2026-05-03 23:27:05.941081+00:00"
+      }
+    }
+  },
+  "0x82fF01408b945af138D3c4619dcf876387D52B09-1774600144403": {
+    "global": {
+      "total_trades": 2,
+      "win_rate": 1.0,
+      "avg_pnl": 3.01,
+      "total_pnl": 6.01,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "0x86fbea68d619daf670185ecd38a69aa90f7703d4": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.6667,
+      "avg_pnl": 24.97,
+      "total_pnl": 74.9,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.6667,
+        "avg_pnl": 24.97,
+        "total_pnl": 74.9,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-02 06:10:35.094230+00:00",
+        "last_trade": "2026-05-03 13:49:00.662304+00:00"
+      }
+    }
+  },
+  "0xCb6Ed9332A8FD1b930893c705dd234f37aa248E6-1774405511911": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 51151.02238076,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 51151.02238076,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0xE5efD6543002653B2EEF940d8254911862aD9e7A-1729599643232": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 16298.08,
+      "total_pnl": 16298.079792239812,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 16298.08,
+        "total_pnl": 16298.079792239812,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0xcF609D3256f0f37f0595E5Dc64012Fa3a8fEa6f5-1771809916847": {
+    "global": {
+      "total_trades": 31,
+      "win_rate": 0.33,
+      "avg_pnl": 853.08,
+      "total_pnl": 26445.489956725127,
+      "classification": "unknown",
+      "classification_confidence": 0.623,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.623
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 31,
+        "win_rate": 0.33,
+        "avg_pnl": 853.08,
+        "total_pnl": 26445.489956725127,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.623
+      }
+    }
+  },
+  "0xd4aa6f8e91cfea29b66a48ebff52814": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.3333,
+      "avg_pnl": -10.63,
+      "total_pnl": -31.89,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.3333,
+        "avg_pnl": -10.63,
+        "total_pnl": -31.89,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-01 22:41:42.479370+00:00",
+        "last_trade": "2026-05-03 01:51:22.351733+00:00"
+      }
+    }
+  },
+  "1922": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.6667,
+      "avg_pnl": 25.92,
+      "total_pnl": 77.77,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.6667,
+        "avg_pnl": 25.92,
+        "total_pnl": 77.77,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-03 13:13:31.755310+00:00",
+        "last_trade": "2026-05-03 20:49:14.566786+00:00"
+      }
+    }
+  },
+  "248188374": {
+    "global": {
+      "total_trades": 7,
+      "win_rate": 0.7143,
+      "avg_pnl": 11.91,
+      "total_pnl": 83.4,
+      "classification": "unknown",
+      "classification_confidence": 0.509,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.509
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 7,
+        "win_rate": 0.7143,
+        "avg_pnl": 11.91,
+        "total_pnl": 83.4,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.509,
+        "first_trade": "2026-05-02 13:17:20.756167+00:00",
+        "last_trade": "2026-05-03 16:18:21.944305+00:00"
+      }
+    }
+  },
+  "AbdelhamidAbaaoud": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 96.46,
+      "total_pnl": 96.46,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "Anointed-Connect": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 268932.44447498245,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 268932.44447498245,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "AppleTime67": {
+    "global": {
+      "total_trades": 8,
+      "win_rate": 0.95,
+      "avg_pnl": 3820.27,
+      "total_pnl": 30562.19936527571,
+      "classification": "unknown",
+      "classification_confidence": 0.514,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.514
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 8,
+        "win_rate": 0.95,
+        "avg_pnl": 3820.27,
+        "total_pnl": 30562.19936527571,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.514
+      }
+    }
+  },
+  "BoerAc": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 0.0,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "Cinibengales": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 42643.36506242404,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 42643.36506242404,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Countryside": {
+    "global": {
+      "total_trades": 106,
+      "win_rate": 0.29,
+      "avg_pnl": 737.36,
+      "total_pnl": 78160.2579862019,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 106,
+        "win_rate": 0.29,
+        "avg_pnl": 737.36,
+        "total_pnl": 78160.2579862019,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "Deep7": {
+    "global": {
+      "total_trades": 8,
+      "win_rate": 0.625,
+      "avg_pnl": 34.15,
+      "total_pnl": 273.23,
+      "classification": "unknown",
+      "classification_confidence": 0.514,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.514
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 8,
+        "win_rate": 0.625,
+        "avg_pnl": 34.15,
+        "total_pnl": 273.23,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.514,
+        "first_trade": "2026-05-02 06:24:51.021489+00:00",
+        "last_trade": "2026-05-03 13:56:05.436104+00:00"
+      }
+    }
+  },
+  "Drose32": {
+    "global": {
+      "total_trades": 6,
+      "win_rate": 0.3333,
+      "avg_pnl": 122.78,
+      "total_pnl": 736.7,
+      "classification": "unknown",
+      "classification_confidence": 0.505,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.505
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 6,
+        "win_rate": 0.3333,
+        "avg_pnl": 122.78,
+        "total_pnl": 736.7,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.505,
+        "first_trade": "2026-05-02 05:41:58.393886+00:00",
+        "last_trade": "2026-05-03 01:34:55.954162+00:00"
+      }
+    }
+  },
+  "Dvitaminbets": {
+    "global": {
+      "total_trades": 5,
+      "win_rate": 0.6,
+      "avg_pnl": 56.05,
+      "total_pnl": 280.25,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 5,
+        "win_rate": 0.6,
+        "avg_pnl": 56.05,
+        "total_pnl": 280.25,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-03 00:56:08.048340+00:00",
+        "last_trade": "2026-05-03 02:30:11.757986+00:00"
+      }
+    }
+  },
+  "ERN993": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 33.67,
+      "total_pnl": 33.67,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "FTWUTB": {
+    "global": {
+      "total_trades": 6,
+      "win_rate": 0.8333,
+      "avg_pnl": 18.62,
+      "total_pnl": 111.71,
+      "classification": "unknown",
+      "classification_confidence": 0.505,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.505
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 6,
+        "win_rate": 0.8333,
+        "avg_pnl": 18.62,
+        "total_pnl": 111.71,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.505,
+        "first_trade": "2026-05-03 19:21:22.649349+00:00",
+        "last_trade": "2026-05-03 20:37:28.337093+00:00"
+      }
+    }
+  },
+  "Herdonia": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.6667,
+      "avg_pnl": 25.26,
+      "total_pnl": 75.78,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.6667,
+        "avg_pnl": 25.26,
+        "total_pnl": 75.78,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-02 20:54:27.899420+00:00",
+        "last_trade": "2026-05-02 22:45:30.155319+00:00"
+      }
+    }
+  },
+  "JPMorgan101": {
+    "global": {
+      "total_trades": 39,
+      "win_rate": 0.95,
+      "avg_pnl": 2491.89,
+      "total_pnl": 97183.52222679963,
+      "classification": "skilled_human",
+      "classification_confidence": 0.661,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.661
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 39,
+        "win_rate": 0.95,
+        "avg_pnl": 2491.89,
+        "total_pnl": 97183.52222679963,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.661
+      }
+    }
+  },
+  "JonDomino": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.3333,
+      "avg_pnl": 9.6,
+      "total_pnl": 28.79,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.3333,
+        "avg_pnl": 9.6,
+        "total_pnl": 28.79,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-01 23:32:54.781704+00:00",
+        "last_trade": "2026-05-02 01:35:58.460657+00:00"
+      }
+    }
+  },
+  "KaneAnalytics": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 64928.020806999935,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 64928.020806999935,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Kds22": {
+    "global": {
+      "total_trades": 13,
+      "win_rate": 0.7692,
+      "avg_pnl": 23.76,
+      "total_pnl": 308.84,
+      "classification": "skilled_human",
+      "classification_confidence": 0.538,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.538
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 13,
+        "win_rate": 0.7692,
+        "avg_pnl": 23.76,
+        "total_pnl": 308.84,
+        "action": "FOLLOW",
+        "action_confidence": 0.538,
+        "first_trade": "2026-05-02 17:36:11.091400+00:00",
+        "last_trade": "2026-05-03 15:55:17.746117+00:00"
+      }
+    }
+  },
+  "Kingdmandan": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 14854.66,
+      "total_pnl": 14854.659809999983,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 14854.66,
+        "total_pnl": 14854.659809999983,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "KioskJammer": {
+    "global": {
+      "total_trades": 2,
+      "win_rate": 1.0,
+      "avg_pnl": 36.0,
+      "total_pnl": 71.99,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "LaBradfordSmith22": {
+    "global": {
+      "total_trades": 114,
+      "win_rate": 0.1842,
+      "avg_pnl": 1.23,
+      "total_pnl": 140.59,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 91,
+        "win_rate": 0.2308,
+        "avg_pnl": 1.54,
+        "total_pnl": 140.59,
+        "action": "NEUTRAL",
+        "action_confidence": 0.907,
+        "first_trade": "2026-05-01 14:20:20.761747+00:00",
+        "last_trade": "2026-05-03 23:51:19.226904+00:00"
+      },
+      "technology": {
+        "total_trades": 23,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 0.0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.585,
+        "first_trade": "2026-05-01 16:45:12.462913+00:00",
+        "last_trade": "2026-05-01 22:02:16.806178+00:00"
+      }
+    }
+  },
+  "NewTeamSosed4": {
+    "global": {
+      "total_trades": 16,
+      "win_rate": 0.75,
+      "avg_pnl": 8.34,
+      "total_pnl": 133.46,
+      "classification": "unknown",
+      "classification_confidence": 0.552,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.552
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 16,
+        "win_rate": 0.75,
+        "avg_pnl": 8.34,
+        "total_pnl": 133.46,
+        "action": "NEUTRAL",
+        "action_confidence": 0.552,
+        "first_trade": "2026-05-02 19:36:33.167158+00:00",
+        "last_trade": "2026-05-04 01:29:28.880347+00:00"
+      }
+    }
+  },
+  "NiFengFanPan": {
+    "global": {
+      "total_trades": 2,
+      "win_rate": 0.5,
+      "avg_pnl": 10.38,
+      "total_pnl": 20.75,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "NonceChaser": {
+    "global": {
+      "total_trades": 5,
+      "win_rate": 0.4,
+      "avg_pnl": 1615.3,
+      "total_pnl": 8076.51,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "RJW1": {
+    "global": {
+      "total_trades": 4,
+      "win_rate": 0.25,
+      "avg_pnl": 11.13,
+      "total_pnl": 44.51,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 4,
+        "win_rate": 0.25,
+        "avg_pnl": 11.13,
+        "total_pnl": 44.51,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-01 16:46:35.457633+00:00",
+        "last_trade": "2026-05-02 19:36:33.196650+00:00"
+      }
+    }
+  },
+  "SMCAOMCRL": {
+    "global": {
+      "total_trades": 155,
+      "win_rate": 0.5613,
+      "avg_pnl": 175.62,
+      "total_pnl": 27220.4,
+      "classification": "skilled_human",
+      "classification_confidence": 0.95,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 151,
+        "win_rate": 0.5563,
+        "avg_pnl": 178.52,
+        "total_pnl": 26956.98,
+        "action": "FOLLOW",
+        "action_confidence": 0.95,
+        "first_trade": "2026-05-01 14:21:42.442541+00:00",
+        "last_trade": "2026-05-04 02:03:13.146144+00:00"
+      },
+      "technology": {
+        "total_trades": 4,
+        "win_rate": 0.75,
+        "avg_pnl": 65.85,
+        "total_pnl": 263.41,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-02 14:33:26.549104+00:00",
+        "last_trade": "2026-05-02 19:56:36.847743+00:00"
+      }
+    }
+  },
+  "Sassy-Bucket": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 337028.31,
+      "total_pnl": 337028.30918248976,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 337028.31,
+        "total_pnl": 337028.30918248976,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "SecondWindCapital": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.3333,
+      "avg_pnl": 32.17,
+      "total_pnl": 96.5,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "Supah9ga": {
+    "global": {
+      "total_trades": 4,
+      "win_rate": 0.5,
+      "avg_pnl": -3.34,
+      "total_pnl": -13.37,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 4,
+        "win_rate": 0.5,
+        "avg_pnl": -3.34,
+        "total_pnl": -13.37,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-03 02:10:00.498625+00:00",
+        "last_trade": "2026-05-03 16:28:46.181384+00:00"
+      }
+    }
+  },
+  "TEST-WHALE-2": {
+    "global": {
+      "total_trades": 5,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 0.0,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "general": {
+        "total_trades": 5,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 0.0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-01 03:55:09.759301+00:00",
+        "last_trade": "2026-05-01 10:26:48.464176+00:00"
+      }
+    }
+  },
+  "TEST-WHALE-3": {
+    "global": {
+      "total_trades": 12,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 0.0,
+      "classification": "unknown",
+      "classification_confidence": 0.533,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.533
+    },
+    "categories": {
+      "general": {
+        "total_trades": 12,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 0.0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.533,
+        "first_trade": "2026-05-01 03:32:09.293546+00:00",
+        "last_trade": "2026-05-01 10:37:36.418504+00:00"
+      }
+    }
+  },
+  "Talvez10": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 21881.17,
+      "total_pnl": 21881.17159100005,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 21881.17,
+        "total_pnl": 21881.17159100005,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "TheMafiaa": {
+    "global": {
+      "total_trades": 2,
+      "win_rate": 0.5,
+      "avg_pnl": -9.05,
+      "total_pnl": -18.09,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "TheOneto3": {
+    "global": {
+      "total_trades": 11,
+      "win_rate": 0.0909,
+      "avg_pnl": -11.58,
+      "total_pnl": -127.35,
+      "classification": "skilled_human",
+      "classification_confidence": 0.528,
+      "global_action": "FADE",
+      "global_action_confidence": 0.528
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 11,
+        "win_rate": 0.0909,
+        "avg_pnl": -11.58,
+        "total_pnl": -127.35,
+        "action": "FADE",
+        "action_confidence": 0.528,
+        "first_trade": "2026-05-01 20:36:41.067573+00:00",
+        "last_trade": "2026-05-03 01:40:14.010808+00:00"
+      }
+    }
+  },
+  "TheVeryGoodCow": {
+    "global": {
+      "total_trades": 23,
+      "win_rate": 0.6522,
+      "avg_pnl": 102.58,
+      "total_pnl": 2359.35,
+      "classification": "skilled_human",
+      "classification_confidence": 0.585,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.585
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 21,
+        "win_rate": 0.6667,
+        "avg_pnl": 108.84,
+        "total_pnl": 2285.63,
+        "action": "FOLLOW",
+        "action_confidence": 0.576,
+        "first_trade": "2026-05-03 06:43:16.011531+00:00",
+        "last_trade": "2026-05-04 01:52:17.824703+00:00"
+      }
+    }
+  },
+  "TimmyTurner123": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 47.27,
+      "total_pnl": 47.27,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "TutiFromFactsOfLife": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 52242.90963635006,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 52242.90963635006,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Valen9": {
+    "global": {
+      "total_trades": 16,
+      "win_rate": 0.73,
+      "avg_pnl": 1890.42,
+      "total_pnl": 30246.782342739512,
+      "classification": "skilled_human",
+      "classification_confidence": 0.552,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.552
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 16,
+        "win_rate": 0.73,
+        "avg_pnl": 1890.42,
+        "total_pnl": 30246.782342739512,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.552
+      }
+    }
+  },
+  "WangXingYu": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 0.0,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 0.0,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Wannac": {
+    "global": {
+      "total_trades": 16,
+      "win_rate": 0.25,
+      "avg_pnl": 1.99,
+      "total_pnl": 31.85,
+      "classification": "unknown",
+      "classification_confidence": 0.552,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.552
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 16,
+        "win_rate": 0.25,
+        "avg_pnl": 1.99,
+        "total_pnl": 31.85,
+        "action": "NEUTRAL",
+        "action_confidence": 0.552,
+        "first_trade": "2026-05-01 22:38:42.824010+00:00",
+        "last_trade": "2026-05-02 20:10:42.368443+00:00"
+      }
+    }
+  },
+  "alwaysfade": {
+    "global": {
+      "total_trades": 14,
+      "win_rate": 0.2857,
+      "avg_pnl": 8.03,
+      "total_pnl": 112.42,
+      "classification": "unknown",
+      "classification_confidence": 0.543,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.543
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 14,
+        "win_rate": 0.2857,
+        "avg_pnl": 8.03,
+        "total_pnl": 112.42,
+        "action": "NEUTRAL",
+        "action_confidence": 0.543,
+        "first_trade": "2026-05-01 17:05:47.011416+00:00",
+        "last_trade": "2026-05-04 01:43:48.325560+00:00"
+      }
+    }
+  },
+  "anFoid": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.0,
+      "avg_pnl": -27.56,
+      "total_pnl": -82.67,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.0,
+        "avg_pnl": -27.56,
+        "total_pnl": -82.67,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-02 04:34:00.818554+00:00",
+        "last_trade": "2026-05-03 02:29:11.652347+00:00"
+      }
+    }
+  },
+  "anoin123": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 44900.0,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 44900.0,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "asdfjh": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 19.8,
+      "total_pnl": 19.8,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "bcda": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 67086.15531899803,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 67086.15531899803,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "beetlepimp": {
+    "global": {
+      "total_trades": 9,
+      "win_rate": 0.4444,
+      "avg_pnl": -4.21,
+      "total_pnl": -37.9,
+      "classification": "unknown",
+      "classification_confidence": 0.519,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.519
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 8,
+        "win_rate": 0.5,
+        "avg_pnl": -3.3,
+        "total_pnl": -26.41,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.514,
+        "first_trade": "2026-05-01 20:30:20.581033+00:00",
+        "last_trade": "2026-05-03 23:41:37.043963+00:00"
+      }
+    }
+  },
+  "benwyatt": {
+    "global": {
+      "total_trades": 84,
+      "win_rate": 0.25,
+      "avg_pnl": 636.77,
+      "total_pnl": 53489.051566430135,
+      "classification": "unknown",
+      "classification_confidence": 0.874,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.874
+    },
+    "categories": {
+      "other": {
+        "total_trades": 84,
+        "win_rate": 0.25,
+        "avg_pnl": 636.77,
+        "total_pnl": 53489.051566430135,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.874
+      },
+      "sports": {
+        "total_trades": 84,
+        "win_rate": 0.25,
+        "avg_pnl": 636.77,
+        "total_pnl": 53489.051566430135,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.874
+      }
+    }
+  },
+  "bossoskil1": {
+    "global": {
+      "total_trades": 78,
+      "win_rate": 0.95,
+      "avg_pnl": 4496.11,
+      "total_pnl": 350696.23561566253,
+      "classification": "skilled_human",
+      "classification_confidence": 0.846,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.846
+    },
+    "categories": {
+      "other": {
+        "total_trades": 78,
+        "win_rate": 0.95,
+        "avg_pnl": 4496.11,
+        "total_pnl": 350696.23561566253,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.846
+      }
+    }
+  },
+  "drjpoll": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": -12.28,
+      "total_pnl": -12.28,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "easypredict": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 38400.0,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 38400.0,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "epend": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.6667,
+      "avg_pnl": 10.01,
+      "total_pnl": 30.02,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.6667,
+        "avg_pnl": 10.01,
+        "total_pnl": 30.02,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-02 17:27:36.475977+00:00",
+        "last_trade": "2026-05-02 20:38:08.193209+00:00"
+      }
+    }
+  },
+  "ferrariChampions2026": {
+    "global": {
+      "total_trades": 463,
+      "win_rate": 0.06,
+      "avg_pnl": 160.08,
+      "total_pnl": 74114.91977346572,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 463,
+        "win_rate": 0.06,
+        "avg_pnl": 160.08,
+        "total_pnl": 74114.91977346572,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "frankfrankfrank": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 17898.37,
+      "total_pnl": 17898.365571139846,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 17898.37,
+        "total_pnl": 17898.365571139846,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "guongAI": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 46.66,
+      "total_pnl": 46.66,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "iDARKenjoyer": {
+    "global": {
+      "total_trades": 13,
+      "win_rate": 0.6,
+      "avg_pnl": 1572.82,
+      "total_pnl": 20446.612668551854,
+      "classification": "skilled_human",
+      "classification_confidence": 0.538,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.538
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 13,
+        "win_rate": 0.6,
+        "avg_pnl": 1572.82,
+        "total_pnl": 20446.612668551854,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.538
+      }
+    }
+  },
+  "jackenand": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 1730.19,
+      "total_pnl": 1730.19,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "joblessfinalboss": {
+    "global": {
+      "total_trades": 7,
+      "win_rate": 0.95,
+      "avg_pnl": 4197.31,
+      "total_pnl": 29381.165300143126,
+      "classification": "unknown",
+      "classification_confidence": 0.509,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.509
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 7,
+        "win_rate": 0.95,
+        "avg_pnl": 4197.31,
+        "total_pnl": 29381.165300143126,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.509
+      }
+    }
+  },
+  "johnbaster": {
+    "global": {
+      "total_trades": 11,
+      "win_rate": 0.3636,
+      "avg_pnl": 3.67,
+      "total_pnl": 40.35,
+      "classification": "unknown",
+      "classification_confidence": 0.528,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.528
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 11,
+        "win_rate": 0.3636,
+        "avg_pnl": 3.67,
+        "total_pnl": 40.35,
+        "action": "NEUTRAL",
+        "action_confidence": 0.528,
+        "first_trade": "2026-05-03 13:49:00.612288+00:00",
+        "last_trade": "2026-05-04 00:12:24.052039+00:00"
+      }
+    }
+  },
+  "johnny234": {
+    "global": {
+      "total_trades": 10,
+      "win_rate": 0.73,
+      "avg_pnl": 1836.05,
+      "total_pnl": 18360.48909130285,
+      "classification": "skilled_human",
+      "classification_confidence": 0.524,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.524
+    },
+    "categories": {
+      "other": {
+        "total_trades": 10,
+        "win_rate": 0.73,
+        "avg_pnl": 1836.05,
+        "total_pnl": 18360.48909130285,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.524
+      }
+    }
+  },
+  "jtwyslljy": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 47817.49763369979,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 47817.49763369979,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "latinalover": {
+    "global": {
+      "total_trades": 7,
+      "win_rate": 0.5714,
+      "avg_pnl": 14.45,
+      "total_pnl": 101.14,
+      "classification": "unknown",
+      "classification_confidence": 0.509,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.509
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 7,
+        "win_rate": 0.5714,
+        "avg_pnl": 14.45,
+        "total_pnl": 101.14,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.509,
+        "first_trade": "2026-05-02 17:33:50.202630+00:00",
+        "last_trade": "2026-05-03 23:10:43.947561+00:00"
+      }
+    }
+  },
+  "lebronjames23": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.0,
+      "avg_pnl": -61.84,
+      "total_pnl": -185.52,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.0,
+        "avg_pnl": -61.84,
+        "total_pnl": -185.52,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-02 01:31:38.956066+00:00",
+        "last_trade": "2026-05-02 03:55:00.255741+00:00"
+      }
+    }
+  },
+  "loitterer": {
+    "global": {
+      "total_trades": 13,
+      "win_rate": 0.5385,
+      "avg_pnl": 9.06,
+      "total_pnl": 117.72,
+      "classification": "unknown",
+      "classification_confidence": 0.538,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.538
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 13,
+        "win_rate": 0.5385,
+        "avg_pnl": 9.06,
+        "total_pnl": 117.72,
+        "action": "NEUTRAL",
+        "action_confidence": 0.538,
+        "first_trade": "2026-05-02 04:33:19.608108+00:00",
+        "last_trade": "2026-05-04 02:55:35.508881+00:00"
+      }
+    }
+  },
+  "loserforever10": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 39.98,
+      "total_pnl": 39.98,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "lu1zzz": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 1.0,
+      "avg_pnl": 19.55,
+      "total_pnl": 19.55,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "matanovik": {
+    "global": {
+      "total_trades": 16,
+      "win_rate": 0.81,
+      "avg_pnl": 2092.16,
+      "total_pnl": 33474.48216783286,
+      "classification": "skilled_human",
+      "classification_confidence": 0.552,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.552
+    },
+    "categories": {
+      "other": {
+        "total_trades": 16,
+        "win_rate": 0.81,
+        "avg_pnl": 2092.16,
+        "total_pnl": 33474.48216783286,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.552
+      }
+    }
+  },
+  "meifei123": {
+    "global": {
+      "total_trades": 13,
+      "win_rate": 0.4615,
+      "avg_pnl": -14.16,
+      "total_pnl": -184.06,
+      "classification": "unknown",
+      "classification_confidence": 0.538,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.538
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 13,
+        "win_rate": 0.4615,
+        "avg_pnl": -14.16,
+        "total_pnl": -184.06,
+        "action": "NEUTRAL",
+        "action_confidence": 0.538,
+        "first_trade": "2026-05-02 06:09:11.578959+00:00",
+        "last_trade": "2026-05-03 13:13:23.560800+00:00"
+      }
+    }
+  },
+  "mooseborzoi": {
+    "global": {
+      "total_trades": 363,
+      "win_rate": 0.29,
+      "avg_pnl": 736.68,
+      "total_pnl": 267415.9936646226,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 363,
+        "win_rate": 0.29,
+        "avg_pnl": 736.68,
+        "total_pnl": 267415.9936646226,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "newdogbeginning": {
+    "global": {
+      "total_trades": 2,
+      "win_rate": 0.5,
+      "avg_pnl": 2.77,
+      "total_pnl": 5.53,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "nojnn": {
+    "global": {
+      "total_trades": 5,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 0.0,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "norrisfan": {
+    "global": {
+      "total_trades": 6,
+      "win_rate": 0.6667,
+      "avg_pnl": 101.04,
+      "total_pnl": 606.26,
+      "classification": "unknown",
+      "classification_confidence": 0.505,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.505
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 6,
+        "win_rate": 0.6667,
+        "avg_pnl": 101.04,
+        "total_pnl": 606.26,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.505,
+        "first_trade": "2026-05-02 17:13:15.599339+00:00",
+        "last_trade": "2026-05-03 02:31:26.494099+00:00"
+      }
+    }
+  },
+  "pilotbaby": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.6667,
+      "avg_pnl": 42.24,
+      "total_pnl": 126.71,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 3,
+        "win_rate": 0.6667,
+        "avg_pnl": 42.24,
+        "total_pnl": 126.71,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-03 21:13:45.299058+00:00",
+        "last_trade": "2026-05-03 21:56:33.884733+00:00"
+      }
+    }
+  },
+  "pilotguy": {
+    "global": {
+      "total_trades": 5,
+      "win_rate": 0.6,
+      "avg_pnl": -97.77,
+      "total_pnl": -488.84,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 5,
+        "win_rate": 0.6,
+        "avg_pnl": -97.77,
+        "total_pnl": -488.84,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-02 15:21:09.018315+00:00",
+        "last_trade": "2026-05-04 01:29:28.854516+00:00"
+      }
+    }
+  },
+  "pilotlady": {
+    "global": {
+      "total_trades": 38,
+      "win_rate": 0.3947,
+      "avg_pnl": 22.42,
+      "total_pnl": 852.0,
+      "classification": "unknown",
+      "classification_confidence": 0.656,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.656
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 36,
+        "win_rate": 0.4167,
+        "avg_pnl": 23.67,
+        "total_pnl": 852.0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.647,
+        "first_trade": "2026-05-01 19:20:41.377647+00:00",
+        "last_trade": "2026-05-04 01:18:21.120933+00:00"
+      }
+    }
+  },
+  "sbsigner": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": -82.01,
+      "total_pnl": -82.01,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {}
+  },
+  "skyman44": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 16077.13,
+      "total_pnl": 16077.132853225252,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 16077.13,
+        "total_pnl": 16077.132853225252,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "surfandturf": {
+    "global": {
+      "total_trades": 109,
+      "win_rate": 0.13,
+      "avg_pnl": 319.91,
+      "total_pnl": 34869.975559698614,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "other": {
+        "total_trades": 109,
+        "win_rate": 0.13,
+        "avg_pnl": 319.91,
+        "total_pnl": 34869.975559698614,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "therighteousdog": {
+    "global": {
+      "total_trades": 4,
+      "win_rate": 0.75,
+      "avg_pnl": 1.67,
+      "total_pnl": 6.7,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 4,
+        "win_rate": 0.75,
+        "avg_pnl": 1.67,
+        "total_pnl": 6.7,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5,
+        "first_trade": "2026-05-03 12:07:43.766276+00:00",
+        "last_trade": "2026-05-04 05:22:14.806900+00:00"
+      }
+    }
+  },
+  "timezonewarrior": {
+    "global": {
+      "total_trades": 9,
+      "win_rate": 0.3333,
+      "avg_pnl": -8.72,
+      "total_pnl": -78.49,
+      "classification": "unknown",
+      "classification_confidence": 0.519,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.519
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 9,
+        "win_rate": 0.3333,
+        "avg_pnl": -8.72,
+        "total_pnl": -78.49,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.519,
+        "first_trade": "2026-05-02 20:47:03.609633+00:00",
+        "last_trade": "2026-05-03 16:08:44.671545+00:00"
+      }
+    }
+  },
+  "trade-via-Gravia": {
+    "global": {
+      "total_trades": 196,
+      "win_rate": 0.6071,
+      "avg_pnl": 34.11,
+      "total_pnl": 6686.44,
+      "classification": "skilled_human",
+      "classification_confidence": 0.95,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 196,
+        "win_rate": 0.6071,
+        "avg_pnl": 34.11,
+        "total_pnl": 6686.44,
+        "action": "FOLLOW",
+        "action_confidence": 0.95,
+        "first_trade": "2026-05-02 23:10:39.825063+00:00",
+        "last_trade": "2026-05-03 08:27:01.895511+00:00"
+      }
+    }
+  },
+  "unknown": {
+    "global": {
+      "total_trades": 83,
+      "win_rate": 0.1325,
+      "avg_pnl": -30.51,
+      "total_pnl": -2532.44,
+      "classification": "skilled_human",
+      "classification_confidence": 0.869,
+      "global_action": "FADE",
+      "global_action_confidence": 0.869
+    },
+    "categories": {
+      "general": {
+        "total_trades": 83,
+        "win_rate": 0.1325,
+        "avg_pnl": -30.51,
+        "total_pnl": -2532.44,
+        "action": "FADE",
+        "action_confidence": 0.869,
+        "first_trade": "2026-05-01 03:46:11.397429+00:00",
+        "last_trade": "2026-05-03 05:02:11.797199+00:00"
+      }
+    }
+  },
+  "weflyhigh": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 863202.3808148149,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 863202.3808148149,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "caicai888888": {
+    "global": {
+      "total_trades": 103,
+      "win_rate": 0.82,
+      "avg_pnl": 2046.2,
+      "total_pnl": 210758.7096973404,
+      "classification": "skilled_human",
+      "classification_confidence": 0.95,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 103,
+        "win_rate": 0.82,
+        "avg_pnl": 2046.2,
+        "total_pnl": 210758.7096973404,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.95
+      },
+      "sports": {
+        "total_trades": 103,
+        "win_rate": 0.82,
+        "avg_pnl": 2046.2,
+        "total_pnl": 210758.7096973404,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "mentionmarket": {
+    "global": {
+      "total_trades": 123,
+      "win_rate": 0.62,
+      "avg_pnl": 1551.15,
+      "total_pnl": 190791.10318760824,
+      "classification": "skilled_human",
+      "classification_confidence": 0.95,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "other": {
+        "total_trades": 123,
+        "win_rate": 0.62,
+        "avg_pnl": 1551.15,
+        "total_pnl": 190791.10318760824,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "SemyonMarmeladov": {
+    "global": {
+      "total_trades": 69,
+      "win_rate": 0.95,
+      "avg_pnl": 2661.49,
+      "total_pnl": 183642.9278865142,
+      "classification": "skilled_human",
+      "classification_confidence": 0.803,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.803
+    },
+    "categories": {
+      "other": {
+        "total_trades": 69,
+        "win_rate": 0.95,
+        "avg_pnl": 2661.49,
+        "total_pnl": 183642.9278865142,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.803
+      }
+    }
+  },
+  "VPenguin": {
+    "global": {
+      "total_trades": 31,
+      "win_rate": 0.95,
+      "avg_pnl": 5367.8,
+      "total_pnl": 166401.80265643215,
+      "classification": "skilled_human",
+      "classification_confidence": 0.623,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.623
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 31,
+        "win_rate": 0.95,
+        "avg_pnl": 5367.8,
+        "total_pnl": 166401.80265643215,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.623
+      }
+    }
+  },
+  "gmpm": {
+    "global": {
+      "total_trades": 8,
+      "win_rate": 0.95,
+      "avg_pnl": 19985.83,
+      "total_pnl": 159886.64503177488,
+      "classification": "unknown",
+      "classification_confidence": 0.514,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.514
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 8,
+        "win_rate": 0.95,
+        "avg_pnl": 19985.83,
+        "total_pnl": 159886.64503177488,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.514
+      }
+    }
+  },
+  "Feromont": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 150610.62,
+      "total_pnl": 150610.62279380774,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 150610.62,
+        "total_pnl": 150610.62279380774,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      },
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 150610.62,
+        "total_pnl": 150610.62279380774,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0x3DFb153c197D4C19D3B31c1ecD2c7B6860eeabAf-1722957908185": {
+    "global": {
+      "total_trades": 62,
+      "win_rate": 0.94,
+      "avg_pnl": 2374.02,
+      "total_pnl": 147189.42347195497,
+      "classification": "skilled_human",
+      "classification_confidence": 0.77,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.77
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 62,
+        "win_rate": 0.94,
+        "avg_pnl": 2374.02,
+        "total_pnl": 147189.42347195497,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.77
+      },
+      "sports": {
+        "total_trades": 62,
+        "win_rate": 0.94,
+        "avg_pnl": 2374.02,
+        "total_pnl": 147189.42347195497,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.77
+      }
+    }
+  },
+  "justwins": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 133976.97,
+      "total_pnl": 133976.97116177506,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 133976.97,
+        "total_pnl": 133976.97116177506,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "swisstony": {
+    "global": {
+      "total_trades": 566,
+      "win_rate": 0.09,
+      "avg_pnl": 215.71,
+      "total_pnl": 122093.0527342083,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 566,
+        "win_rate": 0.09,
+        "avg_pnl": 215.71,
+        "total_pnl": 122093.0527342083,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      },
+      "other": {
+        "total_trades": 566,
+        "win_rate": 0.09,
+        "avg_pnl": 215.71,
+        "total_pnl": 122093.0527342083,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "downtownfee": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 113165.71,
+      "total_pnl": 113165.70853464911,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "other": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 113165.71,
+        "total_pnl": 113165.70853464911,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Sooooo1": {
+    "global": {
+      "total_trades": 45,
+      "win_rate": 0.95,
+      "avg_pnl": 2395.8,
+      "total_pnl": 107810.8488118721,
+      "classification": "skilled_human",
+      "classification_confidence": 0.689,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.689
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 45,
+        "win_rate": 0.95,
+        "avg_pnl": 2395.8,
+        "total_pnl": 107810.8488118721,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.689
+      }
+    }
+  },
+  "0xCB3143ee858E14d0B3FE40fFeaEa78416e646B0": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 98109.63,
+      "total_pnl": 98109.63096755688,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "politics": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 98109.63,
+        "total_pnl": 98109.63096755688,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0x0c154c190E293B7e5F8D453b5F690C4dC9599A45-1775083003603": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 93749.75,
+      "total_pnl": 93749.75069940044,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 93749.75,
+        "total_pnl": 93749.75069940044,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "cigarettes": {
+    "global": {
+      "total_trades": 39,
+      "win_rate": 0.86,
+      "avg_pnl": 2205.03,
+      "total_pnl": 85996.08079088286,
+      "classification": "skilled_human",
+      "classification_confidence": 0.661,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.661
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 39,
+        "win_rate": 0.86,
+        "avg_pnl": 2205.03,
+        "total_pnl": 85996.08079088286,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.661
+      },
+      "other": {
+        "total_trades": 39,
+        "win_rate": 0.86,
+        "avg_pnl": 2205.03,
+        "total_pnl": 85996.08079088286,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.661
+      }
+    }
+  },
+  "0x5966Db1fE50763C9e3C014d756369BAd07E1F804-1777648534241": {
+    "global": {
+      "total_trades": 84,
+      "win_rate": 0.37,
+      "avg_pnl": 925.87,
+      "total_pnl": 77773.23218583393,
+      "classification": "unknown",
+      "classification_confidence": 0.874,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.874
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 84,
+        "win_rate": 0.37,
+        "avg_pnl": 925.87,
+        "total_pnl": 77773.23218583393,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.874
+      },
+      "other": {
+        "total_trades": 84,
+        "win_rate": 0.37,
+        "avg_pnl": 925.87,
+        "total_pnl": 77773.23218583393,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.874
+      }
+    }
+  },
+  "THEdirkdiggler": {
+    "global": {
+      "total_trades": 24,
+      "win_rate": 0.93,
+      "avg_pnl": 2368.37,
+      "total_pnl": 56840.823076042114,
+      "classification": "skilled_human",
+      "classification_confidence": 0.59,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.59
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 24,
+        "win_rate": 0.93,
+        "avg_pnl": 2368.37,
+        "total_pnl": 56840.823076042114,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.59
+      },
+      "sports": {
+        "total_trades": 24,
+        "win_rate": 0.93,
+        "avg_pnl": 2368.37,
+        "total_pnl": 56840.823076042114,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.59
+      }
+    }
+  },
+  "texaskid": {
+    "global": {
+      "total_trades": 66,
+      "win_rate": 0.33,
+      "avg_pnl": 837.69,
+      "total_pnl": 55287.235906607006,
+      "classification": "unknown",
+      "classification_confidence": 0.789,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.789
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 66,
+        "win_rate": 0.33,
+        "avg_pnl": 837.69,
+        "total_pnl": 55287.235906607006,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.789
+      }
+    }
+  },
+  "0x971a4Bb4c480C7BbEE0A4e1BEe72459b21ac447d-1778884311892": {
+    "global": {
+      "total_trades": 80,
+      "win_rate": 0.26,
+      "avg_pnl": 645.25,
+      "total_pnl": 51619.60778138531,
+      "classification": "unknown",
+      "classification_confidence": 0.855,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.855
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 80,
+        "win_rate": 0.26,
+        "avg_pnl": 645.25,
+        "total_pnl": 51619.60778138531,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.855
+      }
+    }
+  },
+  "0x1610DB79f753a80207E1d66716be9E91E627AE49-1778875286261": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 49982.61,
+      "total_pnl": 49982.60624974,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 49982.61,
+        "total_pnl": 49982.60624974,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "beet420": {
+    "global": {
+      "total_trades": 43,
+      "win_rate": 0.45,
+      "avg_pnl": 1138.08,
+      "total_pnl": 48937.53943050508,
+      "classification": "unknown",
+      "classification_confidence": 0.68,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.68
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 43,
+        "win_rate": 0.45,
+        "avg_pnl": 1138.08,
+        "total_pnl": 48937.53943050508,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.68
+      },
+      "sports": {
+        "total_trades": 43,
+        "win_rate": 0.45,
+        "avg_pnl": 1138.08,
+        "total_pnl": 48937.53943050508,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.68
+      }
+    }
+  },
+  "balldontlieee": {
+    "global": {
+      "total_trades": 30,
+      "win_rate": 0.57,
+      "avg_pnl": 1435.44,
+      "total_pnl": 43063.07255083052,
+      "classification": "skilled_human",
+      "classification_confidence": 0.618,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.618
+    },
+    "categories": {
+      "technology": {
+        "total_trades": 30,
+        "win_rate": 0.57,
+        "avg_pnl": 1435.44,
+        "total_pnl": 43063.07255083052,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.618
+      }
+    }
+  },
+  "PineBluff": {
+    "global": {
+      "total_trades": 68,
+      "win_rate": 0.25,
+      "avg_pnl": 624.19,
+      "total_pnl": 42445.04824258648,
+      "classification": "unknown",
+      "classification_confidence": 0.798,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.798
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 68,
+        "win_rate": 0.25,
+        "avg_pnl": 624.19,
+        "total_pnl": 42445.04824258648,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.798
+      }
+    }
+  },
+  "Swooferdeluxe": {
+    "global": {
+      "total_trades": 16,
+      "win_rate": 0.95,
+      "avg_pnl": 2569.5,
+      "total_pnl": 41112.06563691728,
+      "classification": "skilled_human",
+      "classification_confidence": 0.552,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.552
+    },
+    "categories": {
+      "other": {
+        "total_trades": 16,
+        "win_rate": 0.95,
+        "avg_pnl": 2569.5,
+        "total_pnl": 41112.06563691728,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.552
+      }
+    }
+  },
+  "wan123": {
+    "global": {
+      "total_trades": 134,
+      "win_rate": 0.12,
+      "avg_pnl": 303.32,
+      "total_pnl": 40644.882109603466,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 134,
+        "win_rate": 0.12,
+        "avg_pnl": 303.32,
+        "total_pnl": 40644.882109603466,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "Maxdaboss1": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 39879.8,
+      "total_pnl": 39879.79729595434,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 39879.8,
+        "total_pnl": 39879.79729595434,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "COMEONDUDE": {
+    "global": {
+      "total_trades": 4,
+      "win_rate": 0.95,
+      "avg_pnl": 9631.34,
+      "total_pnl": 38525.37679627311,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "other": {
+        "total_trades": 4,
+        "win_rate": 0.95,
+        "avg_pnl": 9631.34,
+        "total_pnl": 38525.37679627311,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0x6918EA182D963b1Fb7888860b8a8b8bCfbA5782b-1771878010027": {
+    "global": {
+      "total_trades": 20,
+      "win_rate": 0.68,
+      "avg_pnl": 1767.82,
+      "total_pnl": 35356.33366463488,
+      "classification": "skilled_human",
+      "classification_confidence": 0.571,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.571
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 20,
+        "win_rate": 0.68,
+        "avg_pnl": 1767.82,
+        "total_pnl": 35356.33366463488,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.571
+      }
+    }
+  },
+  "Erasmus.": {
+    "global": {
+      "total_trades": 81,
+      "win_rate": 0.17,
+      "avg_pnl": 420.76,
+      "total_pnl": 34081.72536517416,
+      "classification": "unknown",
+      "classification_confidence": 0.86,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.86
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 81,
+        "win_rate": 0.17,
+        "avg_pnl": 420.76,
+        "total_pnl": 34081.72536517416,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.86
+      }
+    }
+  },
+  "esportGG": {
+    "global": {
+      "total_trades": 14,
+      "win_rate": 0.91,
+      "avg_pnl": 2433.25,
+      "total_pnl": 34065.47545170749,
+      "classification": "skilled_human",
+      "classification_confidence": 0.543,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.543
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 14,
+        "win_rate": 0.91,
+        "avg_pnl": 2433.25,
+        "total_pnl": 34065.47545170749,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.543
+      }
+    }
+  },
+  "0x2a2C53bD278c04DA9962Fcf96490E17F3DfB9Bc1-1772479215461": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 33948.05,
+      "total_pnl": 33948.05381951717,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 33948.05,
+        "total_pnl": 33948.05381951717,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Foess": {
+    "global": {
+      "total_trades": 28,
+      "win_rate": 0.48,
+      "avg_pnl": 1208.98,
+      "total_pnl": 33851.30076676876,
+      "classification": "unknown",
+      "classification_confidence": 0.609,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.609
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 28,
+        "win_rate": 0.48,
+        "avg_pnl": 1208.98,
+        "total_pnl": 33851.30076676876,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.609
+      }
+    }
+  },
+  "0xE5F0AE9cc9aeF77ae3c2A64c9E69caa3F335dc1d-1773531520731": {
+    "global": {
+      "total_trades": 26,
+      "win_rate": 0.48,
+      "avg_pnl": 1218.64,
+      "total_pnl": 31684.570410878783,
+      "classification": "unknown",
+      "classification_confidence": 0.599,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.599
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 26,
+        "win_rate": 0.48,
+        "avg_pnl": 1218.64,
+        "total_pnl": 31684.570410878783,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.599
+      }
+    }
+  },
+  "betwick": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 31471.67,
+      "total_pnl": 31471.67241932056,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "other": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 31471.67,
+        "total_pnl": 31471.67241932056,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Zywoo123": {
+    "global": {
+      "total_trades": 6,
+      "win_rate": 0.95,
+      "avg_pnl": 5192.95,
+      "total_pnl": 31157.67250000016,
+      "classification": "unknown",
+      "classification_confidence": 0.505,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.505
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 6,
+        "win_rate": 0.95,
+        "avg_pnl": 5192.95,
+        "total_pnl": 31157.67250000016,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.505
+      }
+    }
+  },
+  "olegio": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 30995.45,
+      "total_pnl": 30995.454433131497,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 30995.45,
+        "total_pnl": 30995.454433131497,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      },
+      "other": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 30995.45,
+        "total_pnl": 30995.454433131497,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "PeterSagan": {
+    "global": {
+      "total_trades": 58,
+      "win_rate": 0.21,
+      "avg_pnl": 529.35,
+      "total_pnl": 30702.058368634847,
+      "classification": "unknown",
+      "classification_confidence": 0.751,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.751
+    },
+    "categories": {
+      "other": {
+        "total_trades": 58,
+        "win_rate": 0.21,
+        "avg_pnl": 529.35,
+        "total_pnl": 30702.058368634847,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.751
+      }
+    }
+  },
+  "yhii": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 30623.52,
+      "total_pnl": 30623.51586759626,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 30623.52,
+        "total_pnl": 30623.51586759626,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "surf": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 30515.0,
+      "total_pnl": 30514.99728746801,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 30515.0,
+        "total_pnl": 30514.99728746801,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0x4B8f5644E14Cb679dBadb5F703f6bF39F180dE20-1777611164474": {
+    "global": {
+      "total_trades": 11,
+      "win_rate": 0.95,
+      "avg_pnl": 2764.28,
+      "total_pnl": 30407.06462100001,
+      "classification": "skilled_human",
+      "classification_confidence": 0.528,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.528
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 11,
+        "win_rate": 0.95,
+        "avg_pnl": 2764.28,
+        "total_pnl": 30407.06462100001,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.528
+      },
+      "other": {
+        "total_trades": 11,
+        "win_rate": 0.95,
+        "avg_pnl": 2764.28,
+        "total_pnl": 30407.06462100001,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.528
+      }
+    }
+  },
+  "Cdrael2L": {
+    "global": {
+      "total_trades": 11,
+      "win_rate": 0.95,
+      "avg_pnl": 2699.54,
+      "total_pnl": 29694.939430321094,
+      "classification": "skilled_human",
+      "classification_confidence": 0.528,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.528
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 11,
+        "win_rate": 0.95,
+        "avg_pnl": 2699.54,
+        "total_pnl": 29694.939430321094,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.528
+      }
+    }
+  },
+  "Shori888": {
+    "global": {
+      "total_trades": 15,
+      "win_rate": 0.77,
+      "avg_pnl": 1965.66,
+      "total_pnl": 29484.860893989608,
+      "classification": "skilled_human",
+      "classification_confidence": 0.547,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.547
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 15,
+        "win_rate": 0.77,
+        "avg_pnl": 1965.66,
+        "total_pnl": 29484.860893989608,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.547
+      }
+    }
+  },
+  "martingaleking": {
+    "global": {
+      "total_trades": 22,
+      "win_rate": 0.54,
+      "avg_pnl": 1339.67,
+      "total_pnl": 29472.824513059488,
+      "classification": "unknown",
+      "classification_confidence": 0.581,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.581
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 22,
+        "win_rate": 0.54,
+        "avg_pnl": 1339.67,
+        "total_pnl": 29472.824513059488,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.581
+      }
+    }
+  },
+  "0x2c335066FE58fe9237c3d3Dc7b275C2a034a0563-1759935795465": {
+    "global": {
+      "total_trades": 199,
+      "win_rate": 0.34,
+      "avg_pnl": 848.25,
+      "total_pnl": 168802.43003689585,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "other": {
+        "total_trades": 199,
+        "win_rate": 0.34,
+        "avg_pnl": 848.25,
+        "total_pnl": 168802.43003689585,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "arlanta": {
+    "global": {
+      "total_trades": 10,
+      "win_rate": 0.95,
+      "avg_pnl": 13807.26,
+      "total_pnl": 138072.63227736455,
+      "classification": "skilled_human",
+      "classification_confidence": 0.524,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.524
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 10,
+        "win_rate": 0.95,
+        "avg_pnl": 13807.26,
+        "total_pnl": 138072.63227736455,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.524
+      }
+    }
+  },
+  "Katello": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 138000.0,
+      "total_pnl": 138000.00000000012,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 138000.0,
+        "total_pnl": 138000.00000000012,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "coon777": {
+    "global": {
+      "total_trades": 4,
+      "win_rate": 0.95,
+      "avg_pnl": 30866.52,
+      "total_pnl": 123466.06468935797,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "economics": {
+        "total_trades": 4,
+        "win_rate": 0.95,
+        "avg_pnl": 30866.52,
+        "total_pnl": 123466.06468935797,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "FullPicks1": {
+    "global": {
+      "total_trades": 129,
+      "win_rate": 0.22,
+      "avg_pnl": 557.85,
+      "total_pnl": 71962.44245869073,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "other": {
+        "total_trades": 129,
+        "win_rate": 0.22,
+        "avg_pnl": 557.85,
+        "total_pnl": 71962.44245869073,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "rustin": {
+    "global": {
+      "total_trades": 6,
+      "win_rate": 0.95,
+      "avg_pnl": 10175.87,
+      "total_pnl": 61055.204225801746,
+      "classification": "unknown",
+      "classification_confidence": 0.505,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.505
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 6,
+        "win_rate": 0.95,
+        "avg_pnl": 10175.87,
+        "total_pnl": 61055.204225801746,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.505
+      }
+    }
+  },
+  "bands1": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 50260.38,
+      "total_pnl": 50260.37693646358,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 50260.38,
+        "total_pnl": 50260.37693646358,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0xa0f21e6d351baa9185716b5c00c2925ed9621848": {
+    "global": {
+      "total_trades": 39,
+      "win_rate": 0.5,
+      "avg_pnl": 1253.77,
+      "total_pnl": 48896.84406299978,
+      "classification": "unknown",
+      "classification_confidence": 0.661,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.661
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 39,
+        "win_rate": 0.5,
+        "avg_pnl": 1253.77,
+        "total_pnl": 48896.84406299978,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.661
+      }
+    }
+  },
+  "AV23IUa": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 48457.93,
+      "total_pnl": 48457.9304333895,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 48457.93,
+        "total_pnl": 48457.9304333895,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "phonesculptor": {
+    "global": {
+      "total_trades": 21,
+      "win_rate": 0.62,
+      "avg_pnl": 1594.38,
+      "total_pnl": 33482.04012680065,
+      "classification": "skilled_human",
+      "classification_confidence": 0.576,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.576
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 21,
+        "win_rate": 0.62,
+        "avg_pnl": 1594.38,
+        "total_pnl": 33482.04012680065,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.576
+      }
+    }
+  },
+  "HomeRunHazard": {
+    "global": {
+      "total_trades": 85,
+      "win_rate": 0.14,
+      "avg_pnl": 345.0,
+      "total_pnl": 29324.9874952408,
+      "classification": "unknown",
+      "classification_confidence": 0.879,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.879
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 85,
+        "win_rate": 0.14,
+        "avg_pnl": 345.0,
+        "total_pnl": 29324.9874952408,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.879
+      }
+    }
+  },
+  "pedroBala": {
+    "global": {
+      "total_trades": 44,
+      "win_rate": 0.23,
+      "avg_pnl": 582.66,
+      "total_pnl": 25637.066351789894,
+      "classification": "unknown",
+      "classification_confidence": 0.685,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.685
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 44,
+        "win_rate": 0.23,
+        "avg_pnl": 582.66,
+        "total_pnl": 25637.066351789894,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.685
+      }
+    }
+  },
+  "JMMMMM": {
+    "global": {
+      "total_trades": 14,
+      "win_rate": 0.64,
+      "avg_pnl": 1689.21,
+      "total_pnl": 23648.93903508759,
+      "classification": "skilled_human",
+      "classification_confidence": 0.543,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.543
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 14,
+        "win_rate": 0.64,
+        "avg_pnl": 1689.21,
+        "total_pnl": 23648.93903508759,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.543
+      }
+    }
+  },
+  "0x418D51e13d019913BB027DB22ECc723fe1AD88A3-1720918577961": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 18440.2,
+      "total_pnl": 18440.19628525304,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 18440.2,
+        "total_pnl": 18440.19628525304,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "JuicySlots": {
+    "global": {
+      "total_trades": 9,
+      "win_rate": 0.69,
+      "avg_pnl": 1875.63,
+      "total_pnl": 16880.68247310235,
+      "classification": "unknown",
+      "classification_confidence": 0.519,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.519
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 9,
+        "win_rate": 0.69,
+        "avg_pnl": 1875.63,
+        "total_pnl": 16880.68247310235,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.519
+      }
+    }
+  },
+  "0x5234c8687FbC415e8c255b3a90AFa8CF47de4c4F-1777743586273": {
+    "global": {
+      "total_trades": 79,
+      "win_rate": 0.08,
+      "avg_pnl": 212.09,
+      "total_pnl": 16754.941405777878,
+      "classification": "unknown",
+      "classification_confidence": 0.851,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.851
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 79,
+        "win_rate": 0.08,
+        "avg_pnl": 212.09,
+        "total_pnl": 16754.941405777878,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.851
+      }
+    }
+  },
+  "Netrol": {
+    "global": {
+      "total_trades": 2,
+      "win_rate": 0.95,
+      "avg_pnl": 8116.03,
+      "total_pnl": 16232.058213015604,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 2,
+        "win_rate": 0.95,
+        "avg_pnl": 8116.03,
+        "total_pnl": 16232.058213015604,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "qqq89": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 15944.92,
+      "total_pnl": 15944.918512863002,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 15944.92,
+        "total_pnl": 15944.918512863002,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "msm299": {
+    "global": {
+      "total_trades": 13,
+      "win_rate": 0.48,
+      "avg_pnl": 1211.71,
+      "total_pnl": 15752.271366984627,
+      "classification": "unknown",
+      "classification_confidence": 0.538,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.538
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 13,
+        "win_rate": 0.48,
+        "avg_pnl": 1211.71,
+        "total_pnl": 15752.271366984627,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.538
+      }
+    }
+  },
+  "Bulboor": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 15322.85,
+      "total_pnl": 15322.847735677005,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 15322.85,
+        "total_pnl": 15322.847735677005,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "xifutloong3": {
+    "global": {
+      "total_trades": 7,
+      "win_rate": 0.79,
+      "avg_pnl": 2168.99,
+      "total_pnl": 15182.947201020026,
+      "classification": "unknown",
+      "classification_confidence": 0.509,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.509
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 7,
+        "win_rate": 0.79,
+        "avg_pnl": 2168.99,
+        "total_pnl": 15182.947201020026,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.509
+      }
+    }
+  },
+  "alwayslatetotheparty": {
+    "global": {
+      "total_trades": 788,
+      "win_rate": 0.01,
+      "avg_pnl": 19.15,
+      "total_pnl": 15089.019168896453,
+      "classification": "unknown",
+      "classification_confidence": 0.95,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.95
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 788,
+        "win_rate": 0.01,
+        "avg_pnl": 19.15,
+        "total_pnl": 15089.019168896453,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.95
+      }
+    }
+  },
+  "EB99999": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 14103.08,
+      "total_pnl": 14103.075350683997,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 14103.08,
+        "total_pnl": 14103.075350683997,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "SDTrading": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 13963.02,
+      "total_pnl": 13963.02048607498,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 13963.02,
+        "total_pnl": 13963.02048607498,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0x0limit": {
+    "global": {
+      "total_trades": 2,
+      "win_rate": 0.95,
+      "avg_pnl": 6171.07,
+      "total_pnl": 12342.143557432464,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 2,
+        "win_rate": 0.95,
+        "avg_pnl": 6171.07,
+        "total_pnl": 12342.143557432464,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "0x9045994132125923330024ffa5AE62DE421A0109-1778948520691": {
+    "global": {
+      "total_trades": 22,
+      "win_rate": 0.19,
+      "avg_pnl": 495.11,
+      "total_pnl": 10892.363477999997,
+      "classification": "unknown",
+      "classification_confidence": 0.581,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.581
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 22,
+        "win_rate": 0.19,
+        "avg_pnl": 495.11,
+        "total_pnl": 10892.363477999997,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.581
+      }
+    }
+  },
+  "PDJ88": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 10550.12,
+      "total_pnl": 10550.119578195488,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 10550.12,
+        "total_pnl": 10550.119578195488,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "qiangtai": {
+    "global": {
+      "total_trades": 7,
+      "win_rate": 0.52,
+      "avg_pnl": 1491.36,
+      "total_pnl": 10439.506687147485,
+      "classification": "unknown",
+      "classification_confidence": 0.509,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.509
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 7,
+        "win_rate": 0.52,
+        "avg_pnl": 1491.36,
+        "total_pnl": 10439.506687147485,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.509
+      }
+    }
+  },
+  "How.Dare.You": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 62363.88091260106,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 62363.88091260106,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "redskinrick": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 30884.16433091869,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 30884.16433091869,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "bin8888": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 25500.0,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 25500.0,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "WestCoastWhale": {
+    "global": {
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "avg_pnl": 0.0,
+      "total_pnl": 0.0,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 0,
+        "win_rate": 0.0,
+        "avg_pnl": 0.0,
+        "total_pnl": 0.0,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "aekghas": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 189334.86,
+      "total_pnl": 189334.85959185008,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 189334.86,
+        "total_pnl": 189334.85959185008,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "BBPK": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 159074.28,
+      "total_pnl": 159074.28075536358,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "other": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 159074.28,
+        "total_pnl": 159074.28075536358,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "taylorsversion": {
+    "global": {
+      "total_trades": 7,
+      "win_rate": 0.95,
+      "avg_pnl": 8819.96,
+      "total_pnl": 61739.722532498934,
+      "classification": "unknown",
+      "classification_confidence": 0.509,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.509
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 7,
+        "win_rate": 0.95,
+        "avg_pnl": 8819.96,
+        "total_pnl": 61739.722532498934,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.509
+      }
+    }
+  },
+  "0xf705fa04": {
+    "global": {
+      "total_trades": 11,
+      "win_rate": 0.95,
+      "avg_pnl": 4663.85,
+      "total_pnl": 51302.32597473846,
+      "classification": "skilled_human",
+      "classification_confidence": 0.528,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.528
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 11,
+        "win_rate": 0.95,
+        "avg_pnl": 4663.85,
+        "total_pnl": 51302.32597473846,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.528
+      }
+    }
+  },
+  "Vatrer": {
+    "global": {
+      "total_trades": 11,
+      "win_rate": 0.95,
+      "avg_pnl": 4110.62,
+      "total_pnl": 45216.87086612965,
+      "classification": "skilled_human",
+      "classification_confidence": 0.528,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.528
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 11,
+        "win_rate": 0.95,
+        "avg_pnl": 4110.62,
+        "total_pnl": 45216.87086612965,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.528
+      }
+    }
+  },
+  "Latina": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 44550.0,
+      "total_pnl": 44549.9999987802,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "unknown": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 44550.0,
+        "total_pnl": 44549.9999987802,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "S-Works": {
+    "global": {
+      "total_trades": 22,
+      "win_rate": 0.59,
+      "avg_pnl": 1521.93,
+      "total_pnl": 33482.531047348406,
+      "classification": "skilled_human",
+      "classification_confidence": 0.581,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.581
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 22,
+        "win_rate": 0.59,
+        "avg_pnl": 1521.93,
+        "total_pnl": 33482.531047348406,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.581
+      }
+    }
+  },
+  "AdrianCronauer": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.95,
+      "avg_pnl": 10306.64,
+      "total_pnl": 30919.933435527626,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 3,
+        "win_rate": 0.95,
+        "avg_pnl": 10306.64,
+        "total_pnl": 30919.933435527626,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Sportbetting76": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 24478.15,
+      "total_pnl": 24478.1526038468,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 24478.15,
+        "total_pnl": 24478.1526038468,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "SwissMiss": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 23164.6,
+      "total_pnl": 23164.604071174996,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 23164.6,
+        "total_pnl": 23164.604071174996,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "NiNo999": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 23075.09,
+      "total_pnl": 23075.09257348941,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "other": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 23075.09,
+        "total_pnl": 23075.09257348941,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "Pajamapants": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 21884.4,
+      "total_pnl": 21884.404451392467,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 21884.4,
+        "total_pnl": 21884.404451392467,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "EIf": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 21449.38,
+      "total_pnl": 21449.37931988499,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 21449.38,
+        "total_pnl": 21449.37931988499,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "justbusiness1": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 20206.84,
+      "total_pnl": 20206.839160849646,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "other": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 20206.84,
+        "total_pnl": 20206.839160849646,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "afghj2421": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 18643.82,
+      "total_pnl": 18643.821645307442,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 18643.82,
+        "total_pnl": 18643.821645307442,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "mohahaha": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 17228.02,
+      "total_pnl": 17228.020770642004,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 17228.02,
+        "total_pnl": 17228.020770642004,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "AML": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.0,
+      "avg_pnl": 16876.29,
+      "total_pnl": 16876.28910871502,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 1,
+        "win_rate": 0.0,
+        "avg_pnl": 16876.29,
+        "total_pnl": 16876.28910871502,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "peoplearestrange": {
+    "global": {
+      "total_trades": 10,
+      "win_rate": 0.64,
+      "avg_pnl": 1605.03,
+      "total_pnl": 16050.263947795802,
+      "classification": "skilled_human",
+      "classification_confidence": 0.524,
+      "global_action": "FOLLOW",
+      "global_action_confidence": 0.524
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 10,
+        "win_rate": 0.64,
+        "avg_pnl": 1605.03,
+        "total_pnl": 16050.263947795802,
+        "wins": 0,
+        "losses": 0,
+        "action": "FOLLOW",
+        "action_confidence": 0.524
+      }
+    }
+  },
+  "LYnetLY": {
+    "global": {
+      "total_trades": 9,
+      "win_rate": 0.66,
+      "avg_pnl": 1684.17,
+      "total_pnl": 15157.541142508664,
+      "classification": "unknown",
+      "classification_confidence": 0.519,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.519
+    },
+    "categories": {
+      "other": {
+        "total_trades": 9,
+        "win_rate": 0.66,
+        "avg_pnl": 1684.17,
+        "total_pnl": 15157.541142508664,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.519
+      }
+    }
+  },
+  "millanos": {
+    "global": {
+      "total_trades": 16,
+      "win_rate": 0.35,
+      "avg_pnl": 867.25,
+      "total_pnl": 13875.927835749986,
+      "classification": "unknown",
+      "classification_confidence": 0.552,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.552
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 16,
+        "win_rate": 0.35,
+        "avg_pnl": 867.25,
+        "total_pnl": 13875.927835749986,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.552
+      }
+    }
+  },
+  "TheMangler": {
+    "global": {
+      "total_trades": 10,
+      "win_rate": 0.52,
+      "avg_pnl": 1377.69,
+      "total_pnl": 13776.925555238613,
+      "classification": "unknown",
+      "classification_confidence": 0.524,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.524
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 10,
+        "win_rate": 0.52,
+        "avg_pnl": 1377.69,
+        "total_pnl": 13776.925555238613,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.524
+      }
+    }
+  },
+  "kingofcoinflips": {
+    "global": {
+      "total_trades": 9,
+      "win_rate": 0.55,
+      "avg_pnl": 1377.95,
+      "total_pnl": 12401.517269815784,
+      "classification": "unknown",
+      "classification_confidence": 0.519,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.519
+    },
+    "categories": {
+      "crypto": {
+        "total_trades": 9,
+        "win_rate": 0.55,
+        "avg_pnl": 1377.95,
+        "total_pnl": 12401.517269815784,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.519
+      }
+    }
+  },
+  "hopedieslast": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 11998.36,
+      "total_pnl": 11998.358282128936,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 11998.36,
+        "total_pnl": 11998.358282128936,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "leopardshark": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 11951.31,
+      "total_pnl": 11951.312805700378,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "sports": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 11951.31,
+        "total_pnl": 11951.312805700378,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "gasadfa": {
+    "global": {
+      "total_trades": 10,
+      "win_rate": 0.44,
+      "avg_pnl": 1191.62,
+      "total_pnl": 11916.18659963971,
+      "classification": "unknown",
+      "classification_confidence": 0.524,
+      "global_action": "NEUTRAL",
+      "global_action_confidence": 0.524
+    },
+    "categories": {
+      "other": {
+        "total_trades": 10,
+        "win_rate": 0.44,
+        "avg_pnl": 1191.62,
+        "total_pnl": 11916.18659963971,
+        "wins": 0,
+        "losses": 0,
+        "action": "NEUTRAL",
+        "action_confidence": 0.524
+      }
+    }
+  },
+  "yungstalin": {
+    "global": {
+      "total_trades": 3,
+      "win_rate": 0.95,
+      "avg_pnl": 3893.79,
+      "total_pnl": 11681.381759163118,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "geopolitics": {
+        "total_trades": 3,
+        "win_rate": 0.95,
+        "avg_pnl": 3893.79,
+        "total_pnl": 11681.381759163118,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  },
+  "148572738484": {
+    "global": {
+      "total_trades": 1,
+      "win_rate": 0.95,
+      "avg_pnl": 11669.68,
+      "total_pnl": 11669.679460216634,
+      "classification": "unknown",
+      "classification_confidence": 0.5,
+      "global_action": "INSUFFICIENT_DATA",
+      "global_action_confidence": 0.5
+    },
+    "categories": {
+      "politics": {
+        "total_trades": 1,
+        "win_rate": 0.95,
+        "avg_pnl": 11669.68,
+        "total_pnl": 11669.679460216634,
+        "wins": 0,
+        "losses": 0,
+        "action": "INSUFFICIENT_DATA",
+        "action_confidence": 0.5
+      }
+    }
+  }
+}

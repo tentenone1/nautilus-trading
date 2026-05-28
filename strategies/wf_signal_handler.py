@@ -190,6 +190,92 @@ class SignalHandler:
             _snap["normalized_category"] = _snap["raw_category"]
             _snap["category_confidence"] = 1.0
 
+        # ── Phase 2 (T4 FIX): Run classifier BEFORE any pipeline gate ─────────────
+        # Previously Phase 2 ran AFTER the pipeline rejection, so category_action
+        # was NULL for every signal that was rejected before Phase 2 ran.
+        # This made telemetry queries like:
+        #   SELECT reject_reason, classifier_action FROM decision_snapshots
+        # impossible — every row had NULL classifier_action.
+        # Now the classifier runs immediately after category inference, so
+        # category_action is always populated in every decision snapshot,
+        # including REJECT signals blocked at Step 1 (pipeline) or Step 2
+        # (sports quarantine), and including SHADOW_TRADE signals.
+        _cat_normalized = _snap.get("normalized_category", "")
+        _whale = getattr(signal, 'whale_name', '') or ''
+        try:
+            from strategies.wf_category_action import get_category_action as _get_cat_action
+            _action_result = _get_cat_action(_whale, _cat_normalized)
+        except Exception:
+            _action_result = {
+                "action": "INSUFFICIENT_DATA",
+                "action_confidence": 0.0,
+                "source": "default",
+                "stats": {},
+            }
+        _snap["category_action"] = _action_result["action"]
+        _snap["category_action_confidence"] = _action_result["action_confidence"]
+
+        self.log.info(
+            f"CLASSIFY | {_whale} | {_cat_normalized} | "
+            f"action={_action_result['action']} "
+            f"(conf={_action_result['action_confidence']:.0%}, "
+            f"source={_action_result['source']}) | "
+            f"stats={_action_result.get('stats', {})}"
+        )
+
+        # ── T5: Classifier-gated thresholds ─────────────────────────────────────
+        # Wire the whale classification into the pipeline's confidence gates.
+        # This MUST run before pipeline.process() so modulated confidence/edge
+        # is what the pipeline validates.
+        #
+        #   FOLLOW        proven whale → boost confidence so stricter tier gates
+        #                 pass more easily (SPORTS_MIN_CONFIDENCE × 0.70 = 0.45)
+        #   FADE          reverse signal direction (handled below after pipeline)
+        #   NEUTRAL       standard thresholds
+        #   INSUFFICIENT_DATA  require higher bar — handled by post-pipeline gate
+        #
+        _cat_action = _action_result["action"]
+        _cat_wr = _action_result.get("stats", {}).get("win_rate", 0.0)
+        if _cat_action == "FOLLOW":
+            # ── WR floor guard ──────────────────────────────────────────────────
+            # The classifier says FOLLOW, but we must enforce WR >= 50% at runtime.
+            # The JSON is rebuilt with this floor but Python imports may be cached —
+            # an old module version without the floor could run on this node. The
+            # runtime check is the final safeguard: a FOLLOW whale with sub-50% WR
+            # gets the boost blocked so a bad classifier JSON can't push losing
+            # whales through the pipeline gate.
+            if _cat_wr < 0.50:
+                self.log.warning(
+                    f"CLASSIFIER_BOOST | BLOCKED | {_whale}/{_cat_normalized} | "
+                    f"FOLLOW action but WR={_cat_wr:.0%} < 50% — "
+                    f"boost denied to prevent bad whale from passing gate"
+                )
+            else:
+                _orig_conf = getattr(signal, 'confidence', 0.0) or 0.0
+                _boosted_conf = min(_orig_conf * 1.5, 1.0)
+                signal.confidence = _boosted_conf
+                self.log.info(
+                    f"CLASSIFIER_BOOST | FOLLOW whale — conf boosted "
+                    f"{_orig_conf:.0%} → {_boosted_conf:.0%} "
+                    f"(pipeline min_conf=0.65 now easier to satisfy, WR={_cat_wr:.0%})"
+                )
+        elif _cat_action == "FADE":
+            # Reverse YES/NO direction: FADE whales are proven losers, so flip the
+            # signal. A FADE whale buying YES → we SELL NO. A FADE whale selling
+            # NO → we BUY YES. Preserves base side (BUY/SELL).
+            _side = getattr(signal, 'side', '') or ''
+            _side_upper = _side.upper()
+            if 'YES' in _side_upper:
+                signal.side = _side_upper.replace('YES', 'NO')
+            elif 'NO' in _side_upper:
+                signal.side = _side_upper.replace('NO', 'YES')
+            # Update pipeline_result.side so downstream enter_position() uses reversed side
+            if pipeline_result is not None:
+                pipeline_result.side = signal.side
+            self.log.info(
+                f"FADE_REVERSED | {_whale} | side flipped to {signal.side}"
+            )
+
         # ── Step 1: Pipeline signal filtering ─────────────────────────────────
         if self.pipeline is not None:
             pipeline_result = self.pipeline.process(signal, log=self.log)
@@ -313,6 +399,14 @@ class SignalHandler:
             }
         _snap["category_action"] = _action_result["action"]
         _snap["category_action_confidence"] = _action_result["action_confidence"]
+
+        # T4 FIX: propagate classifier result to pipeline result for telemetry queries.
+        # This makes classifier_action / classifier_confidence queryable via
+        # SELECT reject_reason, classifier_action FROM decision_snapshots.
+        if pipeline_result is not None:
+            pipeline_result.classifier_action = _action_result["action"]
+            pipeline_result.classifier_confidence = _action_result["action_confidence"]
+
         self.log.info(
             f"CLASSIFY | {_whale} | {_cat_normalized} | "
             f"action={_action_result['action']} "
@@ -340,8 +434,6 @@ class SignalHandler:
                     _snap["reject_reason"] = "insufficient_data_whale"
                     _snap["final_decision"] = "REJECT"
                     _snap["passed_execution_checks"] = 0
-                    import sys
-                    print(f"[HANDLER-DBG] BEFORE_INSERT: raw_cat={_snap.get('raw_category')!r} norm_cat={_snap.get('normalized_category')!r} action={_snap.get('category_action')!r}", file=sys.stderr)
                     insert_decision_snapshot(**_snap)
                     return
 
@@ -382,6 +474,26 @@ class SignalHandler:
         # remain blocked. A P&L circuit breaker re-quarantines autoresearch if its
         # last 100 sports trades drop below -$50.
         if is_sports:
+            # ── Sports FOLLOW whales bypass the quarantine ──────────────────────────
+            # v5.6 Phase 2: Sports FOLLOW whales (confidence >= 0.70) are allowed
+            # through the quarantine. This is the primary sports signal path.
+            # Placed BEFORE the autoresearch check so it applies to all non-autoresearch
+            # FOLLOW sports whales too (not just within the autoresearch else-clause).
+            if (
+                _action_result["action"] == "FOLLOW"
+                and _action_result["action_confidence"] >= 0.70
+            ):
+                self.log.info(
+                    f"SPORTS_QUARANTINE_BYPASS [v5.6] | FOLLOW whale allowed through | "
+                    f"whale={_whale} | cat={_cat_normalized} | "
+                    f"conf={_action_result['action_confidence']:.0%}"
+                )
+                # fall through to Step 3 (risk checks) — whitelist approved
+
+            # v5.6: Autoresearch (model_insider) has demonstrated +$1,243 on 531 clean
+            # sports trades. It bypasses the quarantine; whale_tracker and sybil sports
+            # remain blocked. A P&L circuit breaker re-quarantines autoresearch if its
+            # last 100 sports trades drop below -$50.
             from strategies.wf_constants import (
                 SPORTS_QUARANTINE_BYPASS_SOURCES,
                 AUTORESEARCH_SPORTS_PNL_CIRCUIT_BREAKER,

@@ -318,6 +318,11 @@ def resolve_shadow_trade(shadow_trade_id: int, condition_id: str) -> bool:
 
     if not market_resolved or outcome is None:
         # Market not yet resolved — update poll timestamp only
+        # DEBUG: this is expected for long-duration sports futures; added for visibility
+        log.debug(
+            f"SHADOW_LEDGER | market still active: id={shadow_trade_id} "
+            f"cond={condition_id[:40]} resolved={market_resolved} outcome={outcome}"
+        )
         now = datetime.now(timezone.utc).isoformat()
         db = _get_db_path()
         conn = sqlite3.connect(str(db))
