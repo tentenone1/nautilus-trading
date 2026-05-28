@@ -34,6 +34,7 @@ logger = logging.getLogger("PolyDataLoader")
 NAUTILUS_ROOT = Path("/home/elon-1/workspace/nautilus-trading")
 DB_PATH = NAUTILUS_ROOT / "data" / "trades.db"
 OUTPUT_PATH = NAUTILUS_ROOT / "data" / "poly_historical_profiles.json"
+COHORT_CACHE_PATH = NAUTILUS_ROOT / "research" / ".whale_cohort_cache.json"
 
 POLY_DATA_ROOT = Path("/home/elon-1/projects/poly_data")
 PROCESSED_TRADES = POLY_DATA_ROOT / "processed" / "trades.csv"
@@ -481,6 +482,40 @@ def link_nautilus_whales(db: sqlite3.Connection, poly_stats: dict) -> None:
     )
 
 
+def update_whale_cohort_cache(db: sqlite3.Connection) -> None:
+    """Pre-populate JSON cache with top 50 most active wallets for scanner."""
+    rows = db.execute(
+        """SELECT address, classification, total_trades, total_volume_usd,
+                  avg_trade_size_usd, buy_sell_ratio, nautilus_whale_name
+           FROM poly_whale_stats
+           ORDER BY total_volume_usd DESC
+           LIMIT 50"""
+    ).fetchall()
+
+    whales = [
+        {
+            "address": r[0].lower(),
+            "classification": r[1],
+            "total_trades": r[2],
+            "total_volume_usd": r[3],
+            "avg_trade_size_usd": r[4],
+            "buy_sell_ratio": r[5],
+            "nautilus_whale_name": r[6] or "",
+        }
+        for r in rows
+    ]
+
+    cache_data = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "count": len(whales),
+        "whales": whales,
+    }
+
+    COHORT_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    COHORT_CACHE_PATH.write_text(json.dumps(cache_data, indent=2, default=str))
+    logger.info("Wrote %d whales to cohort cache at %s", len(whales), COHORT_CACHE_PATH)
+
+
 def load_market_stats() -> dict:
     """Load market metadata from poly_data markets.csv."""
     logger.info("Loading market stats from %s", MARKETS_CSV)
@@ -683,6 +718,9 @@ def main():
 
     # Link to nautilus whales
     link_nautilus_whales(db, poly_stats)
+
+    # Pre-populate whale cohort cache for scanner
+    update_whale_cohort_cache(db)
 
     # Write to DB
     write_to_db(db, poly_stats, market_stats)

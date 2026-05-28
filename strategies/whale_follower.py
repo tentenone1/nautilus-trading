@@ -313,6 +313,9 @@ class WhaleFollowerConfig(StrategyConfig, frozen=True):
     # Backtest mode: skip live API calls (sybil scans, whale position fetches, LLM analysis)
     backtest: bool = False
 
+    # Tournament-aware sizing: use weekly tournament results to adjust position sizes
+    tournament_aware: bool = True
+
     # Backward compat: allow single instrument_id
     @property
     def instrument_id(self) -> InstrumentId:
@@ -412,6 +415,17 @@ class WhaleFollower(Strategy):
         # ── Phase 4: Capital Pool + Per-Category Strategies ──────────────
         self._capital_pool: CapitalPool | None = None
         self._strategies: dict[str, BaseWhaleFollowerStrategy] = {}
+
+        # Tournament-aware sizing (Sprint 2)
+        self._tournament_bridge: TournamentSignalBridge | None = None
+        if getattr(self.config, 'tournament_aware', True):
+            try:
+                from strategies.tournament_signal_bridge import TournamentSignalBridge
+                self._tournament_bridge = TournamentSignalBridge()
+                self.log.info(f"TournamentSignalBridge initialized: {self._tournament_bridge.get_advisory()}")
+            except Exception as e:
+                self.log.warning(f"TournamentSignalBridge unavailable: {e}")
+                self._tournament_bridge = None
 
     def on_start(self) -> None:
         # Load daily P&L state from disk so kill switches survive restarts.
@@ -913,6 +927,18 @@ class WhaleFollower(Strategy):
         _pipeline_passed: bool = False,
     ) -> None:
         """Delegate position entry to PositionManager."""
+        # Apply tournament advisory sizing (Sprint 2)
+        tournament_multiplier = 1.0
+        if self._tournament_bridge is not None:
+            advisory = self._tournament_bridge.get_advisory()
+            if advisory.get("action") in ("increase_size", "reduce_size"):
+                tournament_multiplier = advisory.get("size_multiplier", 1.0)
+                whale_amount *= tournament_multiplier
+                self.log.info(
+                    f"[TOURNAMENT] action={advisory['action']} "
+                    f"rank={advisory['whale_follower_rank']}/{advisory['total_strategies']} "
+                    f"multiplier={tournament_multiplier:.2f} → size=${whale_amount:.2f}"
+                )
         if self._position_mgr is not None:
             self._position_mgr.enter_position(
                 side=side, price=price, whale_amount=whale_amount,
@@ -991,7 +1017,6 @@ class WhaleFollower(Strategy):
 
     def _update_gap_state(self, signal) -> None:
         """Delegate gap state update to gap_state module."""
-        from strategies.state_manager import update_gap_state
         update_gap_state(signal)
 
     def _on_exit_timer(self, timer_name: str = None) -> None:
