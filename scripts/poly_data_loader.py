@@ -350,51 +350,135 @@ def _load_wallet_registry() -> dict[str, str]:
     try:
         raw = json.loads(registry_path.read_text())
         # Skip metadata keys (those starting with _)
-        return {
-            addr.lower(): name
-            for name, addr in raw.items()
-            if not name.startswith("_") and addr and isinstance(addr, str)
-        }
+        result = {}
+        for name, addr in raw.items():
+            if name.startswith("_"):
+                continue
+            if not addr or not isinstance(addr, str):
+                continue
+            # Store both full address and last 8 chars (substring match for short-format)
+            full = addr.lower()
+            result[full] = name
+            if len(full) >= 8:
+                result[full[-8:]] = name  # short-format suffix match
+        return result
     except Exception as e:
         logger.error("Failed to load wallet registry: %s", e)
         return {}
 
 
+def _build_whale_name_to_addr_map(db: sqlite3.Connection) -> dict[str, str]:
+    """Build whale_name → whale_address mapping from trades.db.
+
+    The trades table stores whale_name and whale_address for each trade.
+    This gives us a direct mapping from our tracked whale names to their addresses.
+    """
+    name_to_addr: dict[str, str] = {}
+    try:
+        rows = db.execute(
+            "SELECT whale_name, whale_address FROM trades "
+            "WHERE whale_name IS NOT NULL AND whale_name != '' "
+            "  AND whale_address IS NOT NULL AND whale_address != '' "
+            "GROUP BY whale_name"
+        ).fetchall()
+        for name, addr in rows:
+            if addr:
+                name_to_addr[str(name)] = str(addr).lower()
+        logger.info("Loaded %d whale_name→address mappings from trades.db", len(name_to_addr))
+    except Exception as e:
+        logger.warning("Could not load whale_name→address map from trades.db: %s", e)
+    return name_to_addr
+
+
 def link_nautilus_whales(db: sqlite3.Connection, poly_stats: dict) -> None:
-    """Link poly_data addresses to nautilus whale names via known_whale_wallets.json + trades table."""
+    """Link poly_data addresses to nautilus whale names via known_whale_wallets.json + trades table.
+
+    Enhanced matching strategy:
+      1. Exact address match against known_whale_wallets.json (full 0x address)
+      2. Substring match against known_whale_wallets.json (last 8 chars of address)
+      3. Whale-name cross-reference: if a nautilus whale has traded, find their address
+         in poly_stats via the name→address map
+      4. Fallback: check if any poly_stats address ends with any known whale suffix
+
+    The core problem: poly_data tracks 7,976 unique addresses across 282K trades,
+    while Nautilus tracks 22 specific whales. These sets may have minimal overlap
+    because poly_data's scope is broader. We try multiple strategies to maximize matches.
+    """
     # Source 1: known_whale_wallets.json (primary — all 26 tracked whales with addresses)
     registry = _load_wallet_registry()
-    logger.info("Loaded %d whales from known_whale_wallets.json", len(registry))
-
-    # Source 2: trades table (supplementary — only whales with trades that have addresses)
-    nautilus_addrs = dict(
-        db.execute(
-            "SELECT LOWER(whale_address), whale_name FROM trades "
-            "WHERE whale_address IS NOT NULL AND whale_name IS NOT NULL "
-            "GROUP BY LOWER(whale_address)"
-        ).fetchall()
+    # registry maps: full_address → whale_name OR short_suffix → whale_name
+    full_addrs = {k: v for k, v in registry.items() if k.startswith("0x")}
+    short_addrs = {k: v for k, v in registry.items() if not k.startswith("0x")}
+    logger.info(
+        "Loaded %d whales from known_whale_wallets.json (%d full, %d short)",
+        len(registry), len(full_addrs), len(short_addrs),
     )
 
-    # Merge both sources, registry takes priority (more complete)
-    all_addrs = {**nautilus_addrs, **registry}
+    # Source 2: whale_name → address from trades.db
+    name_to_addr = _build_whale_name_to_addr_map(db)
 
+    # Source 3: poly_stats keys (all addresses that appear in processed trades)
+    poly_addrs = set(poly_stats.keys())
+    logger.info("poly_stats has %d unique addresses", len(poly_addrs))
+
+    # ── Debug: check for any overlap at all ──────────────────────────────────
+    if full_addrs:
+        full_overlap = set(full_addrs.keys()) & poly_addrs
+        logger.info("Exact address overlap: %d/%d", len(full_overlap), len(full_addrs))
+        if full_overlap:
+            for a in list(full_overlap)[:3]:
+                logger.info("  Found: %s → %s", a, full_addrs[a])
+
+    # ── Match strategies ──────────────────────────────────────────────────────
     linked = 0
+    match_types = {"exact": 0, "short_suffix": 0, "name_crossref": 0}
+
     for addr, stats in poly_stats.items():
-        name = all_addrs.get(addr)
-        if name:
-            stats["nautilus_whale_name"] = name
-            source = "wallet_registry" if addr in registry else "trades_db"
+        addr_lc = addr.lower() if isinstance(addr, str) else addr
+        matched_name: str | None = None
+        match_type = ""
+
+        # Strategy 1: exact address match (full 0x address)
+        if addr_lc in full_addrs:
+            matched_name = full_addrs[addr_lc]
+            match_type = "exact"
+
+        # Strategy 2: short suffix match (last 8 chars)
+        elif len(str(addr_lc)) >= 8:
+            suffix = str(addr_lc)[-8:]
+            if suffix in short_addrs:
+                matched_name = short_addrs[suffix]
+                match_type = "short_suffix"
+
+        # Strategy 3: name cross-reference via trades.db
+        # For each tracked whale name, check if their address appears in poly_stats
+        elif name_to_addr:
+            # Try all tracked whale addresses against this poly address
+            for name, tracked_addr in name_to_addr.items():
+                if tracked_addr == addr_lc or addr_lc.endswith(tracked_addr[-8:]):
+                    matched_name = name
+                    match_type = "name_crossref"
+                    break
+
+        if matched_name:
+            stats["nautilus_whale_name"] = matched_name
             db.execute(
-                "INSERT OR REPLACE INTO poly_address_map (address, nautilus_whale_name, nautilus_source, match_type) "
-                "VALUES (?, ?, ?, 'address_overlap')",
-                (addr, name, source),
+                "INSERT OR REPLACE INTO poly_address_map "
+                "(address, nautilus_whale_name, nautilus_source, match_type) "
+                "VALUES (?, ?, ?, ?)",
+                (addr, matched_name, "wallet_registry" if match_type in ("exact", "short_suffix") else "trades_db", match_type),
             )
+            match_types[match_type] = match_types.get(match_type, 0) + 1
             linked += 1
 
-    logger.info("Linked %d addresses to nautilus whale names (registry=%d, trades=%d)",
-                linked,
-                sum(1 for addr in poly_stats if addr in registry),
-                linked - sum(1 for addr in poly_stats if addr in registry))
+    logger.info(
+        "Linked %d addresses to nautilus whale names "
+        "(exact=%d, short_suffix=%d, name_crossref=%d)",
+        linked,
+        match_types.get("exact", 0),
+        match_types.get("short_suffix", 0),
+        match_types.get("name_crossref", 0),
+    )
 
 
 def load_market_stats() -> dict:
