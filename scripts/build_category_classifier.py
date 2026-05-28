@@ -285,14 +285,22 @@ def _build_from_backup(conn: sqlite3.Connection) -> dict:
     return result
 
 
-def _merge(existing: dict, discovery: dict) -> dict:
+def _merge(existing: dict, discovery: dict, backup_data: dict) -> dict:
     """Merge discovery DB classifications with existing JSON.
 
     Rules:
     - Whales only in existing: keep as-is
     - Whales only in discovery: add
-    - Whales in both: discovery DB wins for global stats;
-      existing per-category entries preserved (they may be more granular)
+    - Whales in both:
+        * global stats: discovery wins (always more current)
+        * per-category: discovery wins for categories it has;
+          categories existing has but discovery doesn't: re-apply
+          _classify_action to ensure current thresholds (including
+          the WR>=50% hard floor) are applied before preserving.
+          This prevents stale backup categories from surviving a merge.
+    - backup_data fills holes: if merged result is missing a per-category
+      entry that backup_data has (means neither existing nor discovery had it),
+      add it with current thresholds applied.
     """
     merged = {}
     seen = set()
@@ -307,18 +315,75 @@ def _merge(existing: dict, discovery: dict) -> dict:
         if wn in seen:
             # Discovery overrides global (always more current)
             merged[wn]["global"] = entry["global"]
-            # Per-category: discovery categories are authoritative.
-            # Any old backup categories NOT in discovery are dropped — the backup
-            # DB may have stale stats that produce wrong actions. Discovery DB is
-            # fresher and its _classify_action already applies current thresholds
-            # (including the WR>=50% floor). If discovery has no per-category data,
-            # we rely on the inherited primary-category from whales table instead.
-            merged[wn]["categories"] = dict(entry.get("categories", {}))
+            # Per-category: start from discovery categories (authoritative where present)
+            disc_cats = dict(entry.get("categories", {}))
+            merged[wn]["categories"] = disc_cats
+
+            # For each category that existing had but discovery doesn't,
+            # re-run _classify_action to ensure current thresholds apply.
+            # Skip private _discovery keys from existing entry.
+            existing_entry = existing.get(wn, {})
+            existing_cats = {
+                k: v for k, v in existing_entry.get("categories", {}).items()
+                if not k.startswith("_")
+            }
+            for cat, cat_stats in existing_cats.items():
+                if cat in disc_cats:
+                    continue  # discovery wins — already in merged["categories"]
+                # Re-classify with current thresholds (applies WR>=50% hard floor).
+                # If _classify_action says NEUTRAL (e.g. bossoskil1 sports: 7% WR),
+                # that NEUTRAL is the correct per-category action and must be kept.
+                action, conf = _classify_action(
+                    cat_stats.get("total_trades", 0),
+                    cat_stats.get("win_rate", 0.0),
+                    cat_stats.get("avg_pnl", 0.0),
+                )
+                merged[wn]["categories"][cat] = {
+                    "total_trades": cat_stats.get("total_trades", 0),
+                    "win_rate": cat_stats.get("win_rate", 0.0),
+                    "avg_pnl": cat_stats.get("avg_pnl", 0.0),
+                    "total_pnl": cat_stats.get("total_pnl", 0.0),
+                    "wins": cat_stats.get("wins", 0),
+                    "losses": cat_stats.get("losses", 0),
+                    "action": action,
+                    "action_confidence": conf,
+                }
         else:
             # New whale from discovery DB — strip private _discovery key
             clean = {k: v for k, v in entry.items() if not k.startswith("_")}
             merged[wn] = clean
         seen.add(wn)
+
+    # ── Fill holes from backup_data ─────────────────────────────────────────────
+    # For whales in merged that are missing a per-category entry that backup_data
+    # has, add it (with current _classify_action thresholds applied).
+    # This catches cases like bossoskil1: discovery has no sports stats (the
+    # whale is listed as primary_category=other), but backup DB has 233 sports
+    # trades with 7% WR — correct action is NEUTRAL, not a fallback to global.
+    for wn, bk_entry in backup_data.items():
+        if wn not in merged:
+            continue  # whale not in any source — skip
+        merged_cats = merged[wn].get("categories", {})
+        for cat, cat_stats in bk_entry.get("categories", {}).items():
+            if cat in merged_cats:
+                continue  # already have this category
+            action, conf = _classify_action(
+                cat_stats.get("total_trades", 0),
+                cat_stats.get("win_rate", 0.0),
+                cat_stats.get("avg_pnl", 0.0),
+            )
+            if "categories" not in merged[wn]:
+                merged[wn]["categories"] = {}
+            merged[wn]["categories"][cat] = {
+                "total_trades": cat_stats.get("total_trades", 0),
+                "win_rate": cat_stats.get("win_rate", 0.0),
+                "avg_pnl": cat_stats.get("avg_pnl", 0.0),
+                "total_pnl": cat_stats.get("total_pnl", 0.0),
+                "wins": cat_stats.get("wins", 0),
+                "losses": cat_stats.get("losses", 0),
+                "action": action,
+                "action_confidence": conf,
+            }
 
     return merged
 
@@ -380,7 +445,7 @@ def build() -> dict:
         log.info("Backup DB not found (%s) — skipping", BACKUP_DB)
 
     # ── Merge ─────────────────────────────────────────────────────────────────
-    merged = _merge(existing, discovery_data)
+    merged = _merge(existing, discovery_data, backup_data)
 
     for wn, entry in merged.items():
         if wn in ("updated_at", "sources", "version"):
