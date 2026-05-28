@@ -113,7 +113,7 @@ class WhaleIdentity:
 
 
 _WHALE_DB_PATH = (
-    Path(__file__).resolve().parents[2] / "data" / "whale_discovery.db"
+    Path(__file__).resolve().parents[1] / "data" / "whale_discovery.db"
 )
 
 FALLBACK_WHALES = [
