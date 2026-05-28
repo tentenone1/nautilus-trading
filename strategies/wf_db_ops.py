@@ -50,6 +50,14 @@ _DECISION_SNAPSHOT_COLUMNS = [
     ("signal_id", "TEXT"),
     ("source", "TEXT"),
     ("category", "TEXT"),
+    # P0 FIX: raw/normalized/category_confidence — distinguish between category
+    # as received from source vs after fallback inference, with confidence flag.
+    # raw_category: what the signal source sent (may be empty string for sybil).
+    # normalized_category: category after fallback inference from market_title.
+    # category_confidence: 1.0 = from source, 0.5 = inferred from market_title.
+    ("raw_category", "TEXT"),
+    ("normalized_category", "TEXT"),
+    ("category_confidence", "REAL DEFAULT 1.0"),
     ("market_title", "TEXT"),
     ("condition_id", "TEXT"),
     ("whale_name", "TEXT"),
@@ -79,6 +87,9 @@ _DECISION_SNAPSHOT_COLUMNS = [
     ("config_version", "TEXT"),
     ("shadow_mode", "INTEGER DEFAULT 0"),
     ("metadata_json", "TEXT"),
+    # Phase 2: whale_category_classifier — per-category action for this signal
+    ("category_action", "TEXT"),                    # FOLLOW | FADE | NEUTRAL | INSUFFICIENT_DATA
+    ("category_action_confidence", "REAL"),         # 0.0–1.0
 ]
 
 # Column definitions for the shadow_trades table.
@@ -579,6 +590,22 @@ def ensure_decision_snapshots_table(db_path: str | None = None) -> None:
     conn.execute("PRAGMA journal_mode=WAL")
     col_defs = ", ".join(f"{name} {defn}" for name, defn in _DECISION_SNAPSHOT_COLUMNS)
     conn.execute(f"CREATE TABLE IF NOT EXISTS decision_snapshots ({col_defs})")
+    # P0 FIX: Migrate existing tables — add raw_category, normalized_category,
+    # category_confidence columns if they don't exist yet (ALTER TABLE is safe
+    # to re-run; SQLite ignores duplicate ADD COLUMN errors).
+    _NEW_DECISION_SNAPSHOT_COLS = {
+        "raw_category": "TEXT",
+        "normalized_category": "TEXT",
+        "category_confidence": "REAL DEFAULT 1.0",
+        # Phase 2: whale_category_classifier columns
+        "category_action": "TEXT",
+        "category_action_confidence": "REAL",
+    }
+    for col_name, col_def in _NEW_DECISION_SNAPSHOT_COLS.items():
+        try:
+            conn.execute(f"ALTER TABLE decision_snapshots ADD COLUMN {col_name} {col_def}")
+        except sqlite3.OperationalError:
+            pass  # column already exists — no-op
     # Indexes for funnel analysis
     for idx_col in ("timestamp", "source", "category", "reject_reason", "final_decision"):
         conn.execute(
@@ -621,6 +648,14 @@ def insert_decision_snapshot(
     config_version: str = "",
     shadow_mode: int = 0,
     metadata_json: str = "",
+    # P0 FIX: raw_category, normalized_category, category_confidence fields
+    # populated by wf_signal_handler._snap to track category provenance.
+    raw_category: str = "",
+    normalized_category: str = "",
+    category_confidence: float = 1.0,
+    # Phase 2: whale_category_classifier — FOLLOW / FADE / NEUTRAL / INSUFFICIENT_DATA
+    category_action: str = "INSUFFICIENT_DATA",
+    category_action_confidence: float = 0.0,
     db_path: str | None = None,
 ) -> bool:
     """Insert a decision snapshot record into the decision_snapshots table.
@@ -686,22 +721,8 @@ def insert_decision_snapshot(
         conn.execute("BEGIN TRANSACTION")
         conn.execute(
             f"""INSERT INTO decision_snapshots (
-                timestamp, signal_id, source, category, market_title, condition_id,
-                whale_name, whale_address, signal_type, edge_score, whale_wr,
-                whale_sample_size, confidence, side,
-                passed_category_filter, passed_quarantine, passed_blacklist,
-                passed_edge_threshold, passed_fade_eligibility, passed_risk_manager,
-                passed_execution_checks, passed_position_limits, passed_pnl_gate,
-                passed_correlation_gate, passed_capital_pool,
-                final_decision, reject_reason, position_size_usd,
-                config_version, shadow_mode, metadata_json
-            ) VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?
-            )""",
-            (
-                timestamp, signal_id, source, category, market_title, condition_id,
+                timestamp, signal_id, source, category, raw_category,
+                normalized_category, category_confidence, market_title, condition_id,
                 whale_name, whale_address, signal_type, edge_score, whale_wr,
                 whale_sample_size, confidence, side,
                 passed_category_filter, passed_quarantine, passed_blacklist,
@@ -710,6 +731,26 @@ def insert_decision_snapshot(
                 passed_correlation_gate, passed_capital_pool,
                 final_decision, reject_reason, position_size_usd,
                 config_version, shadow_mode, metadata_json,
+                category_action, category_action_confidence
+            ) VALUES (
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?,
+            )""",
+            (
+                timestamp, signal_id, source, category, raw_category,
+                normalized_category, category_confidence, market_title, condition_id,
+                whale_name, whale_address, signal_type, edge_score, whale_wr,
+                whale_sample_size, confidence, side,
+                passed_category_filter, passed_quarantine, passed_blacklist,
+                passed_edge_threshold, passed_fade_eligibility, passed_risk_manager,
+                passed_execution_checks, passed_position_limits, passed_pnl_gate,
+                passed_correlation_gate, passed_capital_pool,
+                final_decision, reject_reason, position_size_usd,
+                config_version, shadow_mode, metadata_json,
+                category_action, category_action_confidence,
             ),
         )
         conn.execute("COMMIT")
