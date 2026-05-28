@@ -349,7 +349,15 @@ def insert_shadow_trade(
         conn.execute("COMMIT")
 
         return True
-    except Exception:
+    except Exception as _e:
+        import traceback
+        import logging
+        _lg = logging.getLogger('wf_db_ops')
+        _lg.error(
+            f"insert_decision_snapshot FAILED | whale={whale_name} | "
+            f"category_action={category_action!r} | category_action_confidence={category_action_confidence} | "
+            f"error={_e}\n{traceback.format_exc()}"
+        )
         if conn:
             try:
                 conn.execute("ROLLBACK")

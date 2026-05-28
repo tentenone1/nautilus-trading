@@ -287,6 +287,33 @@ class SignalHandler:
                     f"{_orig_conf:.0%} → {_boosted_conf:.0%} "
                     f"(pipeline min_conf=0.65 now easier to satisfy, WR={_cat_wr:.0%})"
                 )
+
+        # ── Step 8 (P0 FIX): Whale win rate lookup — runs BEFORE pipeline so
+        # whale_wr is available in ALL insert_decision_snapshot calls, including
+        # the early REJECT insert at Step 1 (line 385) which previously ran
+        # BEFORE this lookup, causing whale_wr=0.0 for every rejected signal.
+        _whale_for_step8 = getattr(signal, 'whale_name', '') or ''
+        _whale_wr_step8 = None
+        _tracker_ok = self.config.use_dynamic_kelly and self._s._tracker
+        if _tracker_ok:
+            for _w in self._s._tracker.whales.values():
+                if _w.name == _whale_for_step8:
+                    _whale_wr_step8 = _w.win_rate
+                    _snap["whale_wr"] = _w.win_rate
+                    _snap["whale_sample_size"] = _w.total_trades
+                    break
+            if _whale_wr_step8 is None:
+                self.log.warning(
+                    f"STEP8_DEBUG | whale='{_whale_for_step8}' NOT found in tracker "
+                    f"(use_dk={self.config.use_dynamic_kelly}, tracker={self._s._tracker is not None}, "
+                    f"total_tracked={len(self._s._tracker.whales)})"
+                )
+            else:
+                self.log.debug(
+                    f"STEP8_DEBUG | whale='{_whale_for_step8}' found wr={_whale_wr_step8} "
+                    f"n={_snap.get('whale_sample_size', 0)}"
+                )
+
         elif _cat_action == "FADE":
             # Reverse YES/NO direction: FADE whales are proven losers, so flip the
             # signal. A FADE whale buying YES → we SELL NO. A FADE whale selling
