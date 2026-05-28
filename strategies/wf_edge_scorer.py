@@ -80,6 +80,7 @@ class EdgeResult:
     should_trade: bool             # Whether to enter this trade
     side_flip: bool                # Whether to flip the signal side (for fade)
     poly_enriched: bool = False    # Whether poly_data stats enriched this signal
+    tournament_multiplier: float = 1.0  # Size multiplier from tournament advisory
 
 
 class EdgeScorer:
@@ -440,13 +441,26 @@ class EdgeScorer:
         confidence_multiplier = 0.5 + (confidence * 0.5)  # range 0.5-1.0
         raw_edge *= confidence_multiplier
 
-        # ── Step 9: Clamp and calibrate ────────────────────────────────────
+        # ── Step 9: Tournament size multiplier ──────────────────────────────
+        # When tournament conditions are favorable, relax the edge threshold
+        # (size_multiplier > 1 means position sizing is boosted → less edge needed)
+        tournament_multiplier = 1.0
+        try:
+            from strategies.tournament_signal_bridge import TournamentSignalBridge
+            advisory = TournamentSignalBridge().get_advisory()
+            tournament_multiplier = advisory.get("size_multiplier", 1.0)
+        except Exception:
+            pass
+
+        effective_min_edge = min_edge / max(tournament_multiplier, 0.5)
+
+        # ── Step 10: Clamp and calibrate ────────────────────────────────────
         # Map raw_edge (0-2ish) to calibrated edge (0-1)
         # Using sigmoid-like compression for extreme values
-        calibrated_edge = raw_edge / (1.0 + raw_edge)  # maps (0,∞) → (0,1)
+        calibrated_edge = raw_edge / (1.0 + raw_edge)
         calibrated_edge = max(0.0, min(1.0, calibrated_edge))
 
-        should_trade = calibrated_edge >= min_edge
+        should_trade = calibrated_edge >= effective_min_edge
 
         return EdgeResult(
             edge_score=round(calibrated_edge, 3),
@@ -459,6 +473,7 @@ class EdgeScorer:
             should_trade=should_trade,
             side_flip=side_flip,
             poly_enriched=poly_enriched,
+            tournament_multiplier=tournament_multiplier,
         )
 
     def score_signal_simple(
