@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
+import ssl
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -219,6 +221,20 @@ def poll_market_resolution(condition_id: str) -> dict[str, Any] | None:
             "market_title": m.get("title", ""),
         }
 
+    # P2 FIX: Distinguish transient SSL/network errors from permanent failures.
+    # Transient errors (SSL handshake failures, connection resets, timeouts) mean
+    # the market is still open — don't log as a warning, just return None so the
+    # batch poller treats it as "still pending" rather than "failed".
+    # Permanent errors (HTTP 4xx, JSON parse, etc.) are real failures and should
+    # still warn.
+    except ssl.SSLError as e:
+        # e.g. "Connection reset by peer", CERTIFICATE_VERIFY_FAILED
+        log.debug(f"SHADOW_LEDGER | SSL transient for {condition_id[:20]}: {e}")
+        return None
+    except OSError as e:
+        # e.g. ConnectionResetError, timeout, network unreachable
+        log.debug(f"SHADOW_LEDGER | network transient for {condition_id[:20]}: {e}")
+        return None
     except Exception as e:
         log.warning(f"SHADOW_LEDGER | poll failed for {condition_id[:20]}: {e}")
         return None

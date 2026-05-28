@@ -189,6 +189,7 @@ class PositionManager:
                 s.log.warning(f"KILL_SWITCH active ({elapsed:.0f}s/300s) - rejecting signal for {market_title[:40]}")
                 if _decision_snapshot is not None:
                     _decision_snapshot["passed_risk_manager"] = 0
+                    _decision_snapshot["passed_execution_checks"] = 0
                     _decision_snapshot["final_decision"] = "REJECT"
                     _decision_snapshot["reject_reason"] = "kill_switch_active"
                     insert_decision_snapshot(**_decision_snapshot)
@@ -246,6 +247,7 @@ class PositionManager:
                 )
                 if _decision_snapshot is not None:
                     _decision_snapshot["passed_quarantine"] = 0
+                    _decision_snapshot["passed_execution_checks"] = 0
                     _decision_snapshot["final_decision"] = "REJECT"
                     _decision_snapshot["reject_reason"] = "sports_position_block"
                     insert_decision_snapshot(**_decision_snapshot)
@@ -336,6 +338,7 @@ class PositionManager:
                     s.log.info(f"({market_category}) FADE pool exhausted - request_fade_capital(${size_usd:.0f}) returned ${granted:.0f}, skipping: {whale_name}")
                     if _decision_snapshot is not None:
                         _decision_snapshot["passed_capital_pool"] = 0
+                        _decision_snapshot["passed_execution_checks"] = 0  # BUGFIX: was -1
                         _decision_snapshot["final_decision"] = "REJECT"
                         _decision_snapshot["reject_reason"] = "capital_pool_exhausted"
                         insert_decision_snapshot(**_decision_snapshot)
@@ -344,6 +347,12 @@ class PositionManager:
                 granted = strategy.request_capital(size_usd)
                 if granted <= 0:
                     s.log.info(f"({market_category}) pool exhausted - request_capital(${size_usd:.0f}) returned ${granted:.0f}, skipping: {whale_name}")
+                    if _decision_snapshot is not None:
+                        _decision_snapshot["passed_capital_pool"] = 0
+                        _decision_snapshot["passed_execution_checks"] = 0  # BUGFIX: was -1
+                        _decision_snapshot["final_decision"] = "REJECT"
+                        _decision_snapshot["reject_reason"] = "capital_pool_exhausted"
+                        insert_decision_snapshot(**_decision_snapshot)
                     return
             if granted < size_usd:
                 s.log.info(f"({market_category}) partial capital grant: ${granted:.0f} < desired ${size_usd:.0f}, adjusting from ${size_usd:.0f} to ${granted:.0f}")
@@ -376,6 +385,7 @@ class PositionManager:
             s._kill_switch_time = time.time()
             if _decision_snapshot is not None:
                 _decision_snapshot["passed_position_limits"] = 0
+                _decision_snapshot["passed_execution_checks"] = 0
                 _decision_snapshot["final_decision"] = "REJECT"
                 _decision_snapshot["reject_reason"] = reason or "position_limits_failed"
                 insert_decision_snapshot(**_decision_snapshot)
@@ -467,6 +477,7 @@ class PositionManager:
             s._kill_switch_time = time.time()
             if _decision_snapshot is not None:
                 _decision_snapshot["passed_pnl_gate"] = 0
+                _decision_snapshot["passed_execution_checks"] = 0
                 _decision_snapshot["final_decision"] = "REJECT"
                 _decision_snapshot["reject_reason"] = "48h_pnl_gate"
                 insert_decision_snapshot(**_decision_snapshot)
@@ -483,6 +494,11 @@ class PositionManager:
                 f"PIPELINE_REJECT | correlation_gate | {corr_reason} | "
                 f"title={market_title[:60]!r}"
             )
+            if _decision_snapshot is not None:
+                _decision_snapshot["passed_execution_checks"] = 0
+                _decision_snapshot["final_decision"] = "REJECT"
+                _decision_snapshot["reject_reason"] = "correlation_gate"
+                insert_decision_snapshot(**_decision_snapshot)
             return
 
         if strategy is None:
@@ -492,6 +508,7 @@ class PositionManager:
                 s.log.info(f"Max positions reached ({open_count}/{max_positions}), skipping")
                 if _decision_snapshot is not None:
                     _decision_snapshot["passed_position_limits"] = 0
+                    _decision_snapshot["passed_execution_checks"] = 0
                     _decision_snapshot["final_decision"] = "REJECT"
                     _decision_snapshot["reject_reason"] = "max_positions_reached"
                     insert_decision_snapshot(**_decision_snapshot)

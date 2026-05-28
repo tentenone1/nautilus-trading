@@ -52,18 +52,20 @@ CONFIG_VERSION = "v6.1-observability-telemetry"
 # ── Autoresearch Sports Quarantine Bypass (v5.6) ─────────────────────────
 # Signal sources allowed to bypass the sports quarantine. Autoresearch has
 # demonstrated +$1,243 on 531 clean sports trades; whale_tracker sports has
-# cost -$4,143 on 936 trades, so only autoresearch bypasses the quarantine.
+# cost -$4,143 on 936 trades, so only model_insider bypasses the quarantine.
+# P0 FIX: 'autoresearch_llm' removed from bypass — it is a whale_name in the
+# pipeline, not a source; the bypass check covers 'source' separately from
+# 'whale_name', so keeping it here was redundant and confusing.
 SPORTS_QUARANTINE_BYPASS_SOURCES: frozenset[str] = frozenset({
     "model_insider",
     "autoresearch",
-    "autoresearch_llm",
 })
 
 # Whale names (not signal sources) that bypass the sports quarantine.
-# Kept as a separate frozenset for clarity; 'autoresearch_llm' is also in
-# SPORTS_QUARANTINE_BYPASS_SOURCES so the check covers both dimensions.
+# P0 FIX: 'autoresearch_llm' removed — its whale_name is checked directly in
+# the bypass logic via getattr(signal, 'whale_name', '') == 'autoresearch_llm'
+# in signal_pipeline / wf_signal_handler, so this frozenset was dead code.
 SPORTS_QUARANTINE_BYPASS_WHALE_NAMES: frozenset[str] = frozenset({
-    "autoresearch_llm",
 })
 
 # Circuit breaker: if the last N sports trades from autoresearch sum below

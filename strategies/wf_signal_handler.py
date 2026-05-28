@@ -132,6 +132,16 @@ class SignalHandler:
             "signal_id": str(uuid.uuid4()),
             "source": getattr(signal, 'source', 'unknown') or 'unknown',
             "category": getattr(signal, 'market_category', '') or '',
+            # P0 FIX: raw_category, normalized_category, category_confidence fields.
+            # Track the category as received vs. after fallback inference so we can
+            # measure what fraction of signals needed title-based inference.
+            "raw_category": getattr(signal, 'market_category', '') or '',
+            "normalized_category": getattr(signal, 'market_category', '') or '',
+            "category_confidence": 1.0,
+            # Per-category whale classification (Phase 2: whale_category_classifier)
+            # action: FOLLOW | FADE | NEUTRAL | INSUFFICIENT_DATA
+            "category_action": "INSUFFICIENT_DATA",
+            "category_action_confidence": 0.0,
             "market_title": getattr(signal, 'market_title', '') or '',
             "condition_id": getattr(signal, 'condition_id', '') or '',
             "whale_name": getattr(signal, 'whale_name', '') or '',
@@ -160,6 +170,25 @@ class SignalHandler:
             "shadow_mode": 1 if SHADOW_MODE else 0,
             "metadata_json": "",
         }
+
+        # ── P0 FIX: Category fallback inference ───────────────────────────────────────
+        # If the signal source sent an empty market_category (common for sybil signals),
+        # infer it from market_title using _categorize_market so the normalized_category
+        # field captures what we would have used as a proxy.
+        if not _snap["raw_category"]:
+            try:
+                from strategies.whale_tracker_new import _categorize_market
+                _snap["normalized_category"] = _categorize_market(
+                    getattr(signal, 'market_title', '') or ''
+                )
+                _snap["category_confidence"] = 0.5   # inferred from title
+            except Exception:
+                _snap["normalized_category"] = _snap["raw_category"]
+                _snap["category_confidence"] = 1.0
+        else:
+            # Category came from source — normalized is the same
+            _snap["normalized_category"] = _snap["raw_category"]
+            _snap["category_confidence"] = 1.0
 
         # ── Step 1: Pipeline signal filtering ─────────────────────────────────
         if self.pipeline is not None:
@@ -261,6 +290,69 @@ class SignalHandler:
             alpha_score = getattr(signal, 'alpha_score', 50.0) or 50.0
             tier = self.whale_tiering.get_tier(alpha_score) if self.whale_tiering else "unknown"
             tier_config = self.whale_tiering.get_tier_config(alpha_score) if self.whale_tiering else {}
+
+        # ── Phase 2: Per-category whale classification ──────────────────────────
+        # Phase 2 (whale_category_classifier): Look up this whale's historical
+        # action in this category. The result populates category_action in the
+        # decision snapshot and modulates execution gate thresholds:
+        #   FOLLOW        proven profitable in this category → more lenient gates
+        #   FADE          proven loser → existing fade logic handles inversion
+        #   NEUTRAL       neither good nor bad → standard gates apply
+        #   INSUFFICIENT_DATA  unknown whale → stricter gates (conf ≥ 0.70, edge ≥ 0.25)
+        _cat_normalized = _snap.get("normalized_category", "")
+        _whale = getattr(signal, 'whale_name', '') or ''
+        try:
+            from strategies.wf_category_action import get_category_action as _get_cat_action
+            _action_result = _get_cat_action(_whale, _cat_normalized)
+        except Exception:
+            _action_result = {
+                "action": "INSUFFICIENT_DATA",
+                "action_confidence": 0.0,
+                "source": "default",
+                "stats": {},
+            }
+        _snap["category_action"] = _action_result["action"]
+        _snap["category_action_confidence"] = _action_result["action_confidence"]
+        self.log.info(
+            f"CLASSIFY | {_whale} | {_cat_normalized} | "
+            f"action={_action_result['action']} "
+            f"(conf={_action_result['action_confidence']:.0%}, "
+            f"source={_action_result['source']}) | "
+            f"stats={_action_result.get('stats', {})}"
+        )
+
+        # Gate: INSUFFICIENT_DATA whales — stricter scrutiny for unknown whales
+        # Only apply this gate when the pipeline DID NOT already reject the signal.
+        # If the pipeline rejected it, the rejection reason is preserved in _snap.
+        if _action_result["action"] == "INSUFFICIENT_DATA":
+            _pipeline_rejected = (
+                self.pipeline is not None
+                and not getattr(pipeline_result, 'should_trade', True)
+            )
+            if not _pipeline_rejected:
+                # Whale not in our classification DB — require higher bar to proceed
+                if signal.confidence < 0.70 or edge_val < 0.25:
+                    self.log.info(
+                        f"REJECT insufficient_data_whale: {_whale} | "
+                        f"conf={signal.confidence:.0%} < 70% or edge={edge_val:.3f} < 0.25 | "
+                        f"category={_cat_normalized}"
+                    )
+                    _snap["reject_reason"] = "insufficient_data_whale"
+                    _snap["final_decision"] = "REJECT"
+                    _snap["passed_execution_checks"] = 0
+                    import sys
+                    print(f"[HANDLER-DBG] BEFORE_INSERT: raw_cat={_snap.get('raw_category')!r} norm_cat={_snap.get('normalized_category')!r} action={_snap.get('category_action')!r}", file=sys.stderr)
+                    insert_decision_snapshot(**_snap)
+                    return
+
+        # Gate: FADE classification — log for observability (existing fade logic
+        # in pipeline handles the actual signal inversion; this is for telemetry)
+        if _action_result["action"] == "FADE":
+            self.log.info(
+                f"FADE classification: {_whale} | {_cat_normalized} | "
+                f"conf={_action_result['action_confidence']:.0%} | "
+                f"total_pnl={_action_result.get('stats', {}).get('total_pnl', '?')}"
+            )
 
         # ── Step 2: HARD SPORTS QUARANTINE — block ALL sports signals ──────────────
         # v5.0-emergency-fix: Remove fade bypass. Sports has been a consistent P&L drain
