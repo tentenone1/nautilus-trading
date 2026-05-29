@@ -881,7 +881,10 @@ class WhaleFollower(Strategy):
                 sig._validation_signal_id = signal_id
                 self._on_signal(sig)
         except Exception as e:
+            import traceback as _tb
             self.log.error(f"Trade processing error: {e}")
+            for _line in _tb.format_exc().splitlines():
+                self.log.error(f"  TRACE: {_line}")
 
     def _llm_score_signal(self, signal: WhaleSignal) -> int:
         """Delegate LLM signal scoring to llm_scorer module."""

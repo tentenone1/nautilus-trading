@@ -227,7 +227,7 @@ class PositionManager:
         # Whale_tracker sports: 28% WR, -$4,143 all-time. Block.
         # Autoresearch sports: +$1,243 on 531 clean trades. Allow through.
         # FADE signals bypass — fading losing whales in sports is valid.
-        signal_source = getattr(signal, 'source', '') or ''
+        signal_source = signal_source or ''
         whale_name = whale_name or ''
         from strategies.wf_constants import SPORTS_QUARANTINE_BYPASS_SOURCES
         is_autoresearch = (
@@ -248,7 +248,10 @@ class PositionManager:
                 if _decision_snapshot is not None:
                     _decision_snapshot["passed_quarantine"] = 0
                     _decision_snapshot["passed_execution_checks"] = 0
-                    _decision_snapshot["final_decision"] = "REJECT"
+                    if SHADOW_MODE:
+                        _decision_snapshot["final_decision"] = _decision_snapshot.get("final_decision", "REJECT")
+                    else:
+                        _decision_snapshot["final_decision"] = "REJECT"
                     _decision_snapshot["reject_reason"] = "sports_position_block"
                     insert_decision_snapshot(**_decision_snapshot)
                 return
