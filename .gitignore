@@ -71,3 +71,16 @@ backtest_results/
 .aider*
 .clawd-todos.json
 
+# Nautilus runtime state (not covered by existing broad patterns)
+.heartbeat.json
+_last_sizes.json
+logs/*.pid
+logs/*.jsonl
+logs/v65_daily_summary_*.md
+
+# Generated bridge output
+autoresearch-bridge/
+
+# Stale DB backup
+trades.db.stale-empty-backup
+
