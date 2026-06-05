@@ -84,12 +84,24 @@ _DECISION_SNAPSHOT_COLUMNS = [
     ("final_decision", "TEXT"),         # "TRADE", "REJECT", "SHADOW_TRADE"
     ("reject_reason", "TEXT"),
     ("position_size_usd", "REAL"),
+    ("entry_price", "REAL"),            # Price at signal time (for shadow ledger P&L)
     ("config_version", "TEXT"),
     ("shadow_mode", "INTEGER DEFAULT 0"),
     ("metadata_json", "TEXT"),
     # Phase 2: whale_category_classifier — per-category action for this signal
     ("category_action", "TEXT"),                    # FOLLOW | FADE | NEUTRAL | INSUFFICIENT_DATA
     ("category_action_confidence", "REAL"),         # 0.0–1.0
+    # Phase 2 v2: canonical_perf-based per-category action (queries real resolved data)
+    ("category_action_v2", "TEXT"),
+    ("category_action_reason_v2", "TEXT"),
+    ("category_action_v2_confidence", "REAL"),
+    ("category_confidence_v2", "REAL"),               # alias for category_action_v2_confidence
+    ("category_sample_size_v2", "INTEGER"),
+    ("category_avg_pnl_v2", "REAL"),
+    ("category_win_rate_v2", "REAL"),
+    ("category_action_v2_reason", "TEXT"),
+    ("category_lookup_key_v2", "TEXT"),
+    ("category_match_status_v2", "TEXT"),
 ]
 
 # Column definitions for the shadow_trades table.
@@ -127,6 +139,18 @@ _SHADOW_TRADE_COLUMNS = [
     ("won", "INTEGER"),                 # 1=won, 0=lost, NULL=pending
     ("resolution_source", "TEXT"),      # "clob_api", "gamma_api", or NULL
     ("last_error", "TEXT"),             # Last polling error message
+    # Hypothetical P&L (computed once market resolves)
+    ("hypothetical_pnl", "REAL"),       # Hypothetical P&L based on market resolution
+    ("signal_id", "TEXT"),              # Links to decision_snapshots.signal_id
+    ("is_sports", "INTEGER DEFAULT 0"), # 1 = sports signal
+    ("block_reason", "TEXT"),           # sports_telemetry / shadow_mode_block / etc.
+    ("handler_step", "TEXT"),           # step1_pipeline / step2_handler / j1_position_manager
+    ("outcome_token", "TEXT"),          # v6.6: Polymarket CLOB token id for MTM
+    ("metadata_json", "TEXT"),          # JSON blob for extensible metadata
+    ("market_expires_at", "TEXT"),
+    ("expected_resolution_hours", "REAL"),
+    ("duration_bucket", "TEXT"),
+    ("resolution_priority", "INTEGER"),
 ]
 
 
@@ -263,6 +287,18 @@ def ensure_shadow_trades_table(db_path: str | None = None) -> None:
     conn.execute("PRAGMA journal_mode=WAL")
     col_defs = ", ".join(f"{name} {defn}" for name, defn in _SHADOW_TRADE_COLUMNS)
     conn.execute(f"CREATE TABLE IF NOT EXISTS shadow_trades ({col_defs})")
+    _NEW_SHADOW_TRADE_COLS = {
+        "market_expires_at": "TEXT",
+        "expected_resolution_hours": "REAL",
+        "duration_bucket": "TEXT",
+        "resolution_priority": "INTEGER",
+        "outcome_token": "TEXT",
+    }
+    for col_name, col_def in _NEW_SHADOW_TRADE_COLS.items():
+        try:
+            conn.execute(f"ALTER TABLE shadow_trades ADD COLUMN {col_name} {col_def}")
+        except sqlite3.OperationalError:
+            pass
     for idx_col in ("condition_id", "resolved", "entry_timestamp", "config_version"):
         conn.execute(
             f"CREATE INDEX IF NOT EXISTS idx_st_{idx_col} "
@@ -270,6 +306,9 @@ def ensure_shadow_trades_table(db_path: str | None = None) -> None:
         )
     conn.commit()
     conn.close()
+    
+    # Ensure canonical_perf view exists
+    ensure_canonical_perf_view(db_path)
 
 
 def insert_shadow_trade(
@@ -608,6 +647,19 @@ def ensure_decision_snapshots_table(db_path: str | None = None) -> None:
         # Phase 2: whale_category_classifier columns
         "category_action": "TEXT",
         "category_action_confidence": "REAL",
+        # Phase 2 v2: canonical_perf-based per-category action
+        "category_action_v2": "TEXT",
+        "category_action_reason_v2": "TEXT",
+        "category_action_v2_confidence": "REAL",
+        "category_confidence_v2": "REAL",
+        "category_sample_size_v2": "INTEGER",
+        "category_avg_pnl_v2": "REAL",
+        "category_win_rate_v2": "REAL",
+        "category_action_v2_reason": "TEXT",
+        "category_lookup_key_v2": "TEXT",
+        "category_match_status_v2": "TEXT",
+        # Shadow ledger: price at signal time for P&L computation
+        "entry_price": "REAL DEFAULT 0.0",
     }
     for col_name, col_def in _NEW_DECISION_SNAPSHOT_COLS.items():
         try:
@@ -653,6 +705,7 @@ def insert_decision_snapshot(
     final_decision: str = "REJECT",
     reject_reason: str = "",
     position_size_usd: float = 0.0,
+    entry_price: float = 0.0,
     config_version: str = "",
     shadow_mode: int = 0,
     metadata_json: str = "",
@@ -664,6 +717,17 @@ def insert_decision_snapshot(
     # Phase 2: whale_category_classifier — FOLLOW / FADE / NEUTRAL / INSUFFICIENT_DATA
     category_action: str = "INSUFFICIENT_DATA",
     category_action_confidence: float = 0.0,
+    # Phase 2 v2: canonical_perf-based per-category action
+    category_action_v2: str = "",
+    category_action_reason_v2: str = "",
+    category_action_v2_confidence: float = 0.0,
+    category_confidence_v2: float = 0.0,
+    category_sample_size_v2: int = 0,
+    category_avg_pnl_v2: float = 0.0,
+    category_win_rate_v2: float = 0.0,
+    category_action_v2_reason: str = "",
+    category_lookup_key_v2: str = "",
+    category_match_status_v2: str = "",
     # trace_id: accepted but not stored separately — already embedded in metadata_json
     trace_id: str = "",
     db_path: str | None = None,
@@ -715,6 +779,30 @@ def insert_decision_snapshot(
         True on success, False on failure.
     """
     import json
+    from strategies.wf_observation_v66 import enrich_snapshot_metadata
+
+    _snap_for_meta = {
+        "source": source,
+        "category": category,
+        "raw_category": raw_category,
+        "normalized_category": normalized_category,
+        "market_title": market_title,
+        "whale_name": whale_name,
+        "final_decision": final_decision,
+        "reject_reason": reject_reason,
+        "metadata_json": metadata_json,
+        "category_action_v2": category_action_v2 or "INSUFFICIENT_DATA",
+        "category_sample_size_v2": category_sample_size_v2,
+        "category_avg_pnl_v2": category_avg_pnl_v2,
+        "category_win_rate_v2": category_win_rate_v2,
+    }
+    metadata_json = enrich_snapshot_metadata(_snap_for_meta).get("metadata_json", metadata_json)
+    if not category_action_v2:
+        category_action_v2 = "INSUFFICIENT_DATA"
+    if not category_action_reason_v2:
+        category_action_reason_v2 = category_action_v2_reason or "not_evaluated"
+    if not category_action_v2_reason:
+        category_action_v2_reason = category_action_reason_v2
 
     db = Path(db_path) if db_path else _DEFAULT_DB_PATH
     db.parent.mkdir(parents=True, exist_ok=True)
@@ -729,39 +817,55 @@ def insert_decision_snapshot(
         conn.execute("PRAGMA busy_timeout=5000")
 
         conn.execute("BEGIN TRANSACTION")
+        cursor = conn.execute(
+     f"""INSERT INTO decision_snapshots (
+         timestamp, signal_id, source, category, raw_category,
+         normalized_category, category_confidence, market_title, condition_id,
+         whale_name, whale_address, signal_type, edge_score, whale_wr,
+         whale_sample_size, confidence, side,
+         passed_category_filter, passed_quarantine, passed_blacklist,
+         passed_edge_threshold, passed_fade_eligibility, passed_risk_manager,
+         passed_execution_checks, passed_position_limits, passed_pnl_gate,
+         passed_correlation_gate, passed_capital_pool,
+         final_decision, reject_reason, position_size_usd, entry_price,
+         config_version, shadow_mode, metadata_json,
+         category_action, category_action_confidence,
+         category_action_v2, category_action_reason_v2,
+         category_action_v2_confidence, category_confidence_v2,
+         category_sample_size_v2, category_avg_pnl_v2, category_win_rate_v2
+     ) VALUES (
+         ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         ?, ?, ?, ?,
+         ?, ?, ?, ?, ?, ?, ?
+     )""",
+     (
+         timestamp, signal_id, source, category, raw_category,
+         normalized_category, category_confidence, market_title, condition_id,
+         whale_name, whale_address, signal_type, edge_score, whale_wr,
+         whale_sample_size, confidence, side,
+         passed_category_filter, passed_quarantine, passed_blacklist,
+         passed_edge_threshold, passed_fade_eligibility, passed_risk_manager,
+         passed_execution_checks, passed_position_limits, passed_pnl_gate,
+         passed_correlation_gate, passed_capital_pool,
+         final_decision, reject_reason, position_size_usd, entry_price,
+         config_version, shadow_mode, metadata_json,
+         category_action, category_action_confidence,
+         category_action_v2, category_action_reason_v2,
+         category_action_v2_confidence, category_confidence_v2,
+         category_sample_size_v2, category_avg_pnl_v2, category_win_rate_v2,
+     ),
+ )
+        snapshot_id = cursor.lastrowid
         conn.execute(
-            f"""INSERT INTO decision_snapshots (
-                timestamp, signal_id, source, category, raw_category,
-                normalized_category, category_confidence, market_title, condition_id,
-                whale_name, whale_address, signal_type, edge_score, whale_wr,
-                whale_sample_size, confidence, side,
-                passed_category_filter, passed_quarantine, passed_blacklist,
-                passed_edge_threshold, passed_fade_eligibility, passed_risk_manager,
-                passed_execution_checks, passed_position_limits, passed_pnl_gate,
-                passed_correlation_gate, passed_capital_pool,
-                final_decision, reject_reason, position_size_usd,
-                config_version, shadow_mode, metadata_json,
-                category_action, category_action_confidence
-            ) VALUES (
-                ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?,
-            )""",
-            (
-                timestamp, signal_id, source, category, raw_category,
-                normalized_category, category_confidence, market_title, condition_id,
-                whale_name, whale_address, signal_type, edge_score, whale_wr,
-                whale_sample_size, confidence, side,
-                passed_category_filter, passed_quarantine, passed_blacklist,
-                passed_edge_threshold, passed_fade_eligibility, passed_risk_manager,
-                passed_execution_checks, passed_position_limits, passed_pnl_gate,
-                passed_correlation_gate, passed_capital_pool,
-                final_decision, reject_reason, position_size_usd,
-                config_version, shadow_mode, metadata_json,
-                category_action, category_action_confidence,
-            ),
+            """UPDATE decision_snapshots
+               SET category_action_v2_reason = ?,
+                   category_lookup_key_v2 = ?,
+                   category_match_status_v2 = ?
+               WHERE id = ?""",
+            (category_action_v2_reason, category_lookup_key_v2, category_match_status_v2, snapshot_id),
         )
         conn.execute("COMMIT")
 
@@ -787,13 +891,26 @@ def insert_decision_snapshot(
                 )
                 is_sports = int(any(k in combined for k in _SPORTS_KW))
                 step = "step2_handler" if "handler_step2" in (metadata_json or "") else "step1_pipeline"
+                # v6.6: extract outcome_token and instrument_id from metadata_json
+                _meta = {}
+                _outcome_token = ""
+                _instrument_id = ""
+                try:
+                    if metadata_json:
+                        _meta = json.loads(metadata_json)
+                        if not isinstance(_meta, dict):
+                            _meta = {}
+                        _outcome_token = str(_meta.get("outcome_token") or _meta.get("token_id") or "")
+                        _instrument_id = str(_meta.get("instrument_id") or "")
+                except Exception:
+                    pass
                 insert_shadow_trade(
                     signal_id=signal_id,
-                    snapshot_id=None,
+                    snapshot_id=snapshot_id,
                     condition_id=condition_id,
-                    instrument_id=None,
+                    instrument_id=_instrument_id or None,
                     side=side or "BUY",
-                    entry_price=0.0,
+                    entry_price=entry_price,
                     position_size_usd=position_size_usd,
                     whale_name=whale_name,
                     whale_address=whale_address,
@@ -808,6 +925,7 @@ def insert_decision_snapshot(
                     block_reason=reject_reason,
                     handler_step=step,
                     metadata_json=metadata_json,
+                    outcome_token=_outcome_token,
                 )
             except Exception:
                 pass  # Don't let shadow ledger errors affect the primary path
@@ -1331,3 +1449,113 @@ def verify_config_version_integrity(
                 conn.close()
             except Exception:
                 pass
+
+
+def ensure_canonical_perf_view(db_path: str | None = None) -> None:
+    """Create or replace the canonical_perf view that unifies live and shadow trade performance.
+
+    The view combines:
+    - trades rows (source = 'live') with realized_pnl/realized_return
+    - resolved shadow_trades rows (source = 'shadow') with actual_pnl/actual_return
+    
+    Both sources expose both column names (realized_* and actual_*) for compatibility.
+    Unresolved shadow trades are excluded.
+    """
+    db = Path(db_path) if db_path else _DEFAULT_DB_PATH
+    db.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db))
+    conn.execute("PRAGMA journal_mode=WAL")
+    
+    # Create the unified performance view
+    conn.execute("DROP VIEW IF EXISTS canonical_perf")
+    
+    # Check what columns exist in shadow_trades table
+    try:
+        shadow_columns = conn.execute("PRAGMA table_info(shadow_trades)").fetchall()
+        shadow_column_names = [col[1] for col in shadow_columns]
+        
+        # Check if shadow_trades table has hypothetical_pnl column
+        has_hypothetical_pnl = 'hypothetical_pnl' in shadow_column_names
+        
+        if has_hypothetical_pnl:
+            # Create view with both tables
+            conn.execute("""
+                CREATE VIEW canonical_perf AS
+                SELECT 
+                    trade_id as id,
+                    whale_name,
+                    category,
+                    timestamp as entry_timestamp,
+                    timestamp as exit_timestamp,
+                    realized_pnl,
+                    realized_return,
+                    realized_pnl as actual_pnl,
+                    realized_return as actual_return,
+                    CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END as won,
+                    'live' as source,
+                    config_version
+                FROM trades 
+                WHERE realized_pnl IS NOT NULL
+                
+                UNION ALL
+                
+                SELECT
+                    id,
+                    whale_name,
+                    category,
+                    entry_timestamp,
+                    entry_timestamp as exit_timestamp,
+                    hypothetical_pnl as realized_pnl,
+                    actual_return as realized_return,
+                    actual_pnl,
+                    actual_return,
+                    won,
+                    'shadow' as source,
+                    config_version
+                FROM shadow_trades
+                WHERE resolved = 1 
+                  AND hypothetical_pnl IS NOT NULL
+            """)
+        else:
+            # Create view with only trades table
+            conn.execute("""
+                CREATE VIEW canonical_perf AS
+                SELECT 
+                    trade_id as id,
+                    whale_name,
+                    category,
+                    timestamp as entry_timestamp,
+                    timestamp as exit_timestamp,
+                    realized_pnl,
+                    realized_return,
+                    realized_pnl as actual_pnl,
+                    realized_return as actual_return,
+                    CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END as won,
+                    'live' as source,
+                    config_version
+                FROM trades 
+                WHERE realized_pnl IS NOT NULL
+            """)
+    except Exception:
+        # If that fails, create a simpler view that only includes trades
+        conn.execute("""
+            CREATE VIEW canonical_perf AS
+            SELECT 
+                trade_id as id,
+                whale_name,
+                category,
+                timestamp as entry_timestamp,
+                timestamp as exit_timestamp,
+                realized_pnl,
+                realized_return,
+                realized_pnl as actual_pnl,
+                realized_return as actual_return,
+                CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END as won,
+                'live' as source,
+                config_version
+            FROM trades 
+            WHERE realized_pnl IS NOT NULL
+        """)
+    
+    conn.commit()
+    conn.close()

@@ -72,6 +72,12 @@ def insert_shadow_trade(
     block_reason: str = "",
     handler_step: str = "",
     metadata_json: str = "",
+    outcome_token: str = "",
+    market_expires_at: str | None = None,
+    expected_resolution_hours: float | None = None,
+    duration_bucket: str | None = None,
+    resolution_priority: int | None = None,
+    create_paper_position: bool = True,
 ) -> int | None:
     """Insert a shadow_trades row. Returns the row ID, or None on failure.
 
@@ -113,6 +119,23 @@ def insert_shadow_trade(
     if position_size_usd <= 0:
         meta["size_unknown"] = True
 
+    try:
+        from strategies.wf_observation_v66 import duration_from_metadata_json
+        duration = duration_from_metadata_json(json.dumps(meta) if meta else metadata_json)
+    except Exception:
+        duration = {}
+    market_expires_at = market_expires_at or duration.get("market_expires_at")
+    expected_resolution_hours = expected_resolution_hours if expected_resolution_hours is not None else duration.get("expected_resolution_hours")
+    duration_bucket = duration_bucket or duration.get("duration_bucket") or "unknown"
+    resolution_priority = resolution_priority if resolution_priority is not None else duration.get("resolution_priority", 99)
+
+    if not outcome_token and meta:
+        outcome_token = meta.get("outcome_token") or meta.get("token_id") or ""
+    if outcome_token and not meta.get("outcome_token"):
+        meta["outcome_token"] = outcome_token
+    if not instrument_id and outcome_token:
+        instrument_id = f"{condition_id}-{outcome_token}.POLYMARKET"
+
     conn = sqlite3.connect(str(db))
     conn.execute("PRAGMA busy_timeout = 5000")
     try:
@@ -123,19 +146,32 @@ def insert_shadow_trade(
                 entry_price, position_size_usd, whale_name, whale_address,
                 market_title, category, edge_score, confidence, signal_type,
                 entry_timestamp, config_version, is_sports, block_reason,
-                handler_step, metadata_json, resolved, hypothetical_pnl
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+                handler_step, outcome_token, metadata_json, market_expires_at,
+                expected_resolution_hours, duration_bucket, resolution_priority,
+                resolved, hypothetical_pnl
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
             """,
             (
                 signal_id, snapshot_id, condition_id, instrument_id, side,
                 entry_price, position_size_usd, whale_name, whale_address,
                 market_title, category, edge_score, confidence, signal_type,
                 ts, config_version, is_sports, block_reason, handler_step,
+                outcome_token,
                 json.dumps(meta) if meta else metadata_json,
+                market_expires_at, expected_resolution_hours, duration_bucket, resolution_priority,
             ),
         )
         conn.commit()
         row_id = cursor.lastrowid
+
+        # v6.6-paper-portfolio: create paper position for accepted shadow trades
+        if create_paper_position:
+            try:
+                from strategies.wf_paper_portfolio import create_or_update_from_shadow_trade
+                create_or_update_from_shadow_trade(row_id, str(db))
+            except Exception as pp_err:
+                log.warning("SHADOW_LEDGER | paper position creation failed for id=%s: %s", row_id, pp_err)
+
         log.info(
             f"SHADOW_LEDGER | inserted shadow_trade id={row_id} | "
             f"condition={condition_id[:20]} | block={block_reason} | size=${position_size_usd:.2f}"
@@ -352,6 +388,19 @@ def resolve_shadow_trade(shadow_trade_id: int, condition_id: str) -> bool:
 
     hypothetical_pnl = compute_hypothetical_pnl(side, entry_price, position_size_usd, outcome)
 
+    # Compute actual_pnl, actual_return, and won alongside hypothetical_pnl
+    # For uncomputable trades (entry_price=0 sports backfills), set pnl=0
+    # so they appear in canonical_perf rather than being silently excluded.
+    if hypothetical_pnl is not None:
+        actual_pnl = round(hypothetical_pnl, 2)
+        actual_return = round(hypothetical_pnl / position_size_usd, 6) if position_size_usd > 0 else 0.0
+        won = 1 if hypothetical_pnl > 0 else 0
+    else:
+        hypothetical_pnl = 0.0
+        actual_pnl = 0.0
+        actual_return = 0.0
+        won = 0
+
     now = datetime.now(timezone.utc).isoformat()
     conn2 = sqlite3.connect(str(db))
     conn2.execute("PRAGMA busy_timeout = 5000")
@@ -362,26 +411,47 @@ def resolve_shadow_trade(shadow_trade_id: int, condition_id: str) -> bool:
             resolution_timestamp = ?,
             winning_outcome = ?,
             hypothetical_pnl = ?,
-            resolution_polled_at = ?,
-            resolved_integer = 1
+            actual_pnl = ?,
+            actual_return = ?,
+            won = ?,
+            resolution_polled_at = ?
         WHERE id = ?
         """,
-        (now, outcome, hypothetical_pnl, now, shadow_trade_id),
+        (now, outcome, hypothetical_pnl, actual_pnl, actual_return, won, now, shadow_trade_id),
     )
     conn2.commit()
     conn2.close()
 
+    # v6.6-paper-portfolio: sync resolution to paper position
+    try:
+        from strategies.wf_paper_portfolio import resolve_paper_position_from_shadow_trade
+        resolve_paper_position_from_shadow_trade(shadow_trade_id, str(db))
+    except Exception as pp_err:
+        log.warning("SHADOW_LEDGER | paper position resolve failed for id=%s: %s", shadow_trade_id, pp_err)
+
+    hyp_str = f"${hypothetical_pnl:.2f}" if hypothetical_pnl is not None else "$N/A"
+    act_str = f"${actual_pnl:.2f}" if actual_pnl is not None else "$N/A"
     log.info(
         f"SHADOW_LEDGER | resolved id={shadow_trade_id} | outcome={outcome} | "
-        f"hypothetical_pnl=${hypothetical_pnl:.2f if hypothetical_pnl is not None else 'N/A'}"
+        f"hypothetical_pnl={hyp_str} | actual_pnl={act_str}"
     )
     return True
 
 
 # ── Batch resolution polling ───────────────────────────────────────────────────
 
-def poll_pending_shadow_trades(limit: int | None = None) -> dict[str, Any]:
+def poll_pending_shadow_trades(
+    limit: int | None = None,
+    prefer_near_expiry: bool = False,
+) -> dict[str, Any]:
     """Poll all unresolved shadow_trades (resolved=0), up to `limit`.
+
+    Args:
+        limit: Max trades to poll.
+        prefer_near_expiry: When True, prioritize trades with the oldest
+            ``resolution_polled_at`` — these haven't been checked in the
+            longest time and are most likely to have resolved since the
+            last poll.  Falls back to FIFO by insertion order.
 
     Returns a summary dict.
     """
@@ -391,8 +461,9 @@ def poll_pending_shadow_trades(limit: int | None = None) -> dict[str, Any]:
     conn = sqlite3.connect(str(db))
     conn.execute("PRAGMA busy_timeout = 5000")
 
+    order_clause = "resolution_polled_at ASC" if prefer_near_expiry else "id ASC"
     rows = conn.execute(
-        "SELECT id, condition_id FROM shadow_trades WHERE resolved = 0 ORDER BY id LIMIT ?",
+        f"SELECT id, condition_id FROM shadow_trades WHERE resolved = 0 ORDER BY {order_clause} LIMIT ?",
         (limit,),
     ).fetchall()
     conn.close()

@@ -149,6 +149,11 @@ def _check_pid_lock():
     with open(PID_FILE, "w") as f:
         f.write(str(os.getpid()))
 
+    # ── Clean shutdown flag — prevents node.dispose() on external SIGTERM ──
+    # When systemd sends SIGTERM we must NOT run node.dispose() in the finally
+    # block, because NautilusTrader's Rust/Tokio shutdown can panic → abort.
+    _shutting_down = {"value": False}
+
     def _cleanup_pid():
         try:
             if os.path.exists(PID_FILE):
@@ -160,8 +165,11 @@ def _check_pid_lock():
             pass
 
     def _sigterm_handler(signum, frame):
+        _shutting_down["value"] = True
         _cleanup_pid()
-        sys.exit(0)
+        # os._exit(0) bypasses Python atexit/finally — avoids node.dispose()
+        # which triggers Rust/Tokio panic → SIGABRT on shutdown
+        os._exit(0)
 
     atexit.register(_cleanup_pid)
     signal.signal(signal.SIGTERM, _sigterm_handler)
@@ -776,4 +784,9 @@ if __name__ == "__main__":
     finally:
         _ws_watchdog_running = False
         reconciler.stop_periodic()
-        node.dispose()
+        # Only dispose on natural exit (Ctrl+C / internal error).
+        # On external SIGTERM (systemd restart/stop) the signal handler
+        # sets _shutting_down and calls os._exit(0) — we skip dispose
+        # to avoid Rust/Tokio panic → SIGABRT.
+        if not _shutting_down["value"]:
+            node.dispose()

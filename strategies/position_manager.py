@@ -581,6 +581,7 @@ class PositionManager:
                 _decision_snapshot["final_decision"] = "SHADOW_TRADE"
                 _decision_snapshot["reject_reason"] = "shadow_mode_block"
                 _decision_snapshot["position_size_usd"] = size_usd
+                _decision_snapshot["entry_price"] = float(price)
                 insert_decision_snapshot(**_decision_snapshot)
             return
 

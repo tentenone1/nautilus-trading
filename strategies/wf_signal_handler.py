@@ -34,6 +34,7 @@ from strategies.wf_constants import (
     SPORTS_TELEMETRY_MODE,
 )
 from strategies.wf_db_ops import insert_decision_snapshot
+from strategies.wf_observation_v66 import enrich_snapshot_metadata
 
 # Validation integration (graceful degradation)
 try:
@@ -177,9 +178,14 @@ class SignalHandler:
             "position_size_usd": 0.0,
             "config_version": ACTIVE_CONFIG_VERSION,
             "shadow_mode": 1 if SHADOW_MODE else 0,
-            "metadata_json": json.dumps({"trace_id": str(uuid.uuid4())[:8]}),
+            "metadata_json": json.dumps({
+                "trace_id": str(uuid.uuid4())[:8],
+                "token_id": getattr(signal, 'token_id', '') or '',
+            }),
         }
         _trace_id = _snap["metadata_json"]  # used in TRACE_PHASE2 log below
+
+        _snap = enrich_snapshot_metadata(_snap, signal)
 
         # ── P0 FIX: Category fallback inference ───────────────────────────────────────
         # If the signal source sent an empty market_category (common for sybil signals),
@@ -236,11 +242,34 @@ class SignalHandler:
             f"snap_keys={list(_snap.keys())}"
         )
 
+        # Phase 2 v2: canonical_perf-based classifier — runs alongside v1, never gates
+        try:
+            from strategies.wf_category_action import get_category_action_v2 as _get_cat_action_v2
+            _v2_result = _get_cat_action_v2(_whale, _cat_normalized)
+        except Exception:
+            _v2_result = {
+                "action": "INSUFFICIENT_DATA",
+                "action_confidence": 0.0,
+                "source": "canonical_perf",
+                "stats": {},
+            }
+        _snap["category_action_v2"] = _v2_result.get("action", "INSUFFICIENT_DATA")
+        _snap["category_action_reason_v2"] = _v2_result.get("reason") or _v2_result.get("source", "canonical_perf")
+        _snap["category_action_v2_reason"] = _snap["category_action_reason_v2"]
+        _snap["category_action_v2_confidence"] = _v2_result.get("action_confidence", 0.0)
+        _snap["category_confidence_v2"] = _v2_result.get("action_confidence", 0.0)
+        _snap["category_sample_size_v2"] = _v2_result.get("stats", {}).get("total_trades", 0)
+        _snap["category_avg_pnl_v2"] = _v2_result.get("stats", {}).get("avg_pnl", 0.0)
+        _snap["category_win_rate_v2"] = _v2_result.get("stats", {}).get("win_rate", 0.0)
+        _snap["category_lookup_key_v2"] = _v2_result.get("lookup_key", f"{_whale}|{_cat_normalized}")
+        _snap["category_match_status_v2"] = _v2_result.get("match_status", "unknown")
+        _snap = enrich_snapshot_metadata(_snap, signal)
+
         # TRACE LOG 3: Phase 2 completed — confirms classifier ran to completion
         self.log.warning(
             f"TRACE_PHASE2 | whale={_whale} | cat={_cat_normalized} | "
             f"action={_action_result['action']} | conf={_action_result['action_confidence']:.0%} | "
-            f"trace={_snap.get('trace_id','?')}"
+            f"v2={_v2_result['action']} | trace={_snap.get('trace_id','?')}"
         )
 
         self.log.info(

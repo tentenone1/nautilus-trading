@@ -29,6 +29,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# ── SHADOW_MODE hard stop ─────────────────────────────────────────────
+from strategies.wf_constants import SHADOW_MODE
+if SHADOW_MODE:
+    print("FATAL: SHADOW_MODE=True — run_micro_live.py is blocked.")
+    print("Set SHADOW_MODE=False in strategies/wf_constants.py to enable live trading.")
+    sys.exit(1)
+
 # Line-buffered stdout so crash output isn't silently lost
 sys.stdout.reconfigure(line_buffering=True)
 

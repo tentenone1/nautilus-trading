@@ -324,6 +324,101 @@ def get_category_action(
     }
 
 
+def get_category_action_v2(
+    whale_name: str,
+    category: str,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Query canonical_perf for per-whale per-category real performance stats.
+
+    v6.6: this is observation-only. It returns explicit lookup/reason fields so
+    abstentions can be audited, but callers must not use it as an execution gate.
+    """
+    lookup_category = category or ""
+    lookup_key = f"{whale_name or ''}|{lookup_category}"
+
+    def _result(action: str, conf: float, reason: str, stats: dict[str, Any] | None = None, match_status: str = "unknown") -> dict[str, Any]:
+        return {
+            "action": action or "INSUFFICIENT_DATA",
+            "action_confidence": round(float(conf or 0.0), 3),
+            "source": "canonical_perf",
+            "reason": reason,
+            "lookup_key": lookup_key,
+            "match_status": match_status,
+            "stats": stats or {"total_trades": 0, "win_rate": 0.0, "avg_pnl": 0.0, "total_pnl": 0.0},
+        }
+
+    if not whale_name:
+        return _result("INSUFFICIENT_DATA", 0.0, "missing_whale_name", match_status="no_lookup")
+
+    path = Path(db_path) if db_path else _DATA_DIR / "trades.db"
+    if not path.exists():
+        return _result("INSUFFICIENT_DATA", 0.0, "canonical_perf_db_missing", match_status="db_missing")
+
+    try:
+        conn = sqlite3.connect(str(path))
+        conn.execute("PRAGMA busy_timeout=5000")
+        row = conn.execute(
+            """SELECT
+                   COUNT(*),
+                   COALESCE(AVG(actual_pnl), 0.0),
+                   CASE WHEN COUNT(*) > 0
+                        THEN CAST(SUM(won) AS REAL) / COUNT(*)
+                        ELSE 0.0 END
+               FROM canonical_perf
+               WHERE whale_name = ? AND category = ?
+                 AND actual_pnl IS NOT NULL""",
+            (whale_name, lookup_category),
+        ).fetchone()
+        whale_row = conn.execute(
+            """SELECT COUNT(*), GROUP_CONCAT(DISTINCT COALESCE(category, ''))
+               FROM canonical_perf
+               WHERE whale_name = ? AND actual_pnl IS NOT NULL""",
+            (whale_name,),
+        ).fetchone()
+        conn.close()
+
+        total_trades = row[0] or 0
+        avg_pnl = row[1] or 0.0
+        win_rate = row[2] or 0.0
+        stats = {
+            "total_trades": total_trades,
+            "win_rate": round(win_rate, 4),
+            "avg_pnl": round(avg_pnl, 2),
+            "total_pnl": round(avg_pnl * total_trades, 2),
+        }
+
+        if total_trades == 0:
+            whale_total = whale_row[0] if whale_row else 0
+            if whale_total:
+                stats["whale_total_other_categories"] = whale_total
+                stats["available_categories"] = (whale_row[1] or "") if whale_row else ""
+                return _result(
+                    "INSUFFICIENT_DATA", 0.0, "no_rows_for_lookup_key",
+                    stats, match_status="whale_matched_category_mismatch",
+                )
+            return _result("INSUFFICIENT_DATA", 0.0, "no_canonical_perf_rows", stats, match_status="no_match")
+
+        if total_trades < 10:
+            conf = min(total_trades / 10, 1.0) * 0.5
+            return _result(
+                "INSUFFICIENT_DATA", conf, "sample_size_below_minimum",
+                stats, match_status="matched_exact",
+            )
+
+        edge_hit = avg_pnl >= 25.0 and win_rate >= 0.05 and total_trades >= 50
+        primary_hit = avg_pnl >= 10.0 and win_rate >= 0.55
+        fade_hit = avg_pnl < -5.0 and win_rate <= 0.45
+        conf = min(0.5 + total_trades / 100 * 0.45, 0.95)
+
+        if edge_hit or primary_hit:
+            return _result("FOLLOW", conf, "positive_canonical_perf", stats, match_status="matched_exact")
+        if fade_hit:
+            return _result("FADE", conf, "negative_canonical_perf", stats, match_status="matched_exact")
+        return _result("NEUTRAL", conf, "canonical_perf_neutral", stats, match_status="matched_exact")
+    except Exception as exc:
+        return _result("INSUFFICIENT_DATA", 0.0, f"canonical_perf_error:{type(exc).__name__}", match_status="error")
+
 def get_follow_whales(category: str | None = None) -> list[str]:
     """Return all whale names classified as FOLLOW in the given category (or globally)."""
     data = _load_classifications()

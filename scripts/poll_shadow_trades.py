@@ -52,10 +52,21 @@ def main() -> int:
         action="store_true",
         help="Poll but don't write results to DB",
     )
+    parser.add_argument(
+        "--prefer-near-expiry",
+        action="store_true",
+        help="Prioritize polling markets that expire soon",
+    )
     args = parser.parse_args()
 
+    # Early return for dry-run mode before any backfill or API calls
+    if args.dry_run:
+        log.info("Dry-run mode: polling skipped")
+        return 0
+
     log.info("=" * 60)
-    log.info("poll_shadow_trades.py | starting poll | limit=%d | dry_run=%s", args.limit, args.dry_run)
+    log.info("poll_shadow_trades.py | starting poll | limit=%d | dry_run=%s | prefer_near_expiry=%s", 
+             args.limit, args.dry_run, args.prefer_near_expiry)
 
     try:
         # Backfill any sports_telemetry signals not yet in shadow_trades
@@ -71,7 +82,7 @@ def main() -> int:
             log.info("Dry-run mode: polling skipped")
             return 0
 
-        result = poll_pending_shadow_trades(limit=args.limit)
+        result = poll_pending_shadow_trades(limit=args.limit, prefer_near_expiry=args.prefer_near_expiry)
 
         log.info(
             "Poll complete | polled=%d resolved=%d pending=%d errors=%d | "
