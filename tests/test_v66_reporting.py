@@ -293,5 +293,117 @@ def test_top_winners_and_losers_exclude_legacy_and_use_title_fallback() -> None:
             os.unlink(db_path)
 
 
+def test_report_adds_concentration_alerts_and_hypothetical_flags() -> None:
+    """Concentration diagnostics should be report-only labels, not gates."""
+    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp_db:
+        db_path = tmp_db.name
+
+    try:
+        ensure_paper_portfolio_tables(db_path)
+        conn = sqlite3.connect(db_path)
+        recent_time = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+
+        rows = [
+            (1, 'cond_a', 'token_a', 'Market A', 'whale_a', '', 'known_whale', 'general', 'NEUTRAL', 50.0),
+            (2, 'cond_b', 'token_b', 'Market B', 'whale_b', '', 'known_whale', 'politics', 'INSUFFICIENT_DATA', 30.0),
+            (3, 'cond_c', 'token_c', 'Market C', 'unknown', '', 'model_insider', 'general', 'NEUTRAL', 20.0),
+        ]
+        for row in rows:
+            conn.execute("""
+                INSERT INTO paper_positions
+                (id, experiment_tag, resolved, shadow_trade_id, snapshot_id, condition_id,
+                 outcome_token, price_status, price_source, last_price_timestamp, market_title,
+                 whale_name, whale_cluster, source, category, category_action_v2,
+                 simulated_size, unrealized_pnl, realized_pnl)
+                VALUES
+                (?, 'v6.6-paper-portfolio', 0, ?, ?, ?, ?, 'ok', 'clob_midpoint', ?, ?,
+                 ?, ?, ?, ?, ?, ?, 0.0, 0.0)
+            """, (
+                row[0], row[0], row[0], row[1], row[2], recent_time, row[3],
+                row[4], row[5], row[6], row[7], row[8], row[9],
+            ))
+        conn.commit()
+        conn.close()
+
+        report = generate_report(db_path)
+
+        assert report["concentration_risk"]["total_open_exposure"] == 100.0
+        assert report["concentration_risk"]["unknown_whale_exposure_pct"] == 20.0
+        assert "single_whale_cluster_gt_40" in report["concentration_risk"]["alert_labels"]
+        assert "single_market_gt_35" in report["concentration_risk"]["alert_labels"]
+        assert "unknown_whale_gt_50" not in report["concentration_risk"]["alert_labels"]
+        assert report["concentration_risk"]["hypothetical_flags"]["would_exceed_whale_cap"] is True
+        assert report["concentration_risk"]["hypothetical_flags"]["would_exceed_market_cap"] is True
+        assert report["concentration_risk"]["hypothetical_flags"]["would_exceed_unknown_cap"] is False
+        assert report["concentration_by_source"][0]["source"] == "known_whale"
+        assert report["concentration_by_category_action_v2"][0]["category_action_v2"] == "NEUTRAL"
+
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_report_alerts_when_mtm_coverage_is_below_threshold() -> None:
+    """MTM coverage below 80% should render as an observation alert only."""
+    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp_db:
+        db_path = tmp_db.name
+
+    try:
+        ensure_paper_portfolio_tables(db_path)
+        conn = sqlite3.connect(db_path)
+        recent_time = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+
+        for idx in range(1, 6):
+            status = 'ok' if idx <= 3 else 'pending'
+            ts = recent_time if idx <= 3 else None
+            conn.execute("""
+                INSERT INTO paper_positions
+                (id, experiment_tag, resolved, shadow_trade_id, snapshot_id, condition_id,
+                 outcome_token, price_status, price_source, last_price_timestamp, market_title,
+                 whale_name, source, category, category_action_v2,
+                 simulated_size, unrealized_pnl, realized_pnl)
+                VALUES
+                (?, 'v6.6-paper-portfolio', 0, ?, ?, ?, ?, ?, 'clob_midpoint', ?, ?,
+                 'test_whale', 'known_whale', 'general', 'NEUTRAL', 10.0, 0.0, 0.0)
+            """, (idx, idx, idx, f'cond_{idx}', f'token_{idx}', status, ts, f'Market {idx}'))
+        conn.commit()
+        conn.close()
+
+        report = generate_report(db_path)
+
+        assert report["mtm_coverage"]["coverage_pct"] == 60.0
+        assert "mtm_coverage_lt_80" in report["concentration_risk"]["alert_labels"]
+
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+
+
+def test_report_alerts_when_last_updater_run_had_errors() -> None:
+    """Updater errors should be read from the report log and labeled only."""
+    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp_db:
+        db_path = tmp_db.name
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False) as tmp_log:
+        log_path = tmp_log.name
+        tmp_log.write(
+            "2026-06-06T10:00:01 INFO update | MTM complete | "
+            "total=5 updated=4 missing_price=0 stale_mark=0 "
+            "unpriceable_token=0 unpriceable_data=0 resolved=0 errors=1\n"
+        )
+
+    try:
+        ensure_paper_portfolio_tables(db_path)
+
+        report = generate_report(db_path, update_log_path=log_path)
+
+        assert report["updater_health"]["last_errors"] == 1
+        assert "updater_errors_gt_0" in report["concentration_risk"]["alert_labels"]
+
+    finally:
+        for path in (db_path, log_path):
+            if os.path.exists(path):
+                os.unlink(path)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
