@@ -23,10 +23,13 @@ Actions: FOLLOW | FADE | NEUTRAL | INSUFFICIENT_DATA
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Cache TTL in seconds — avoids re-loading JSON on every signal
 _CACHE_TTL_SECONDS = 60.0
@@ -62,15 +65,45 @@ _inactive_cache_time: float = 0.0
 _INACTIVE_CACHE_TTL = 60.0
 
 
+def _sanitize_action(action_value: Any, context: str = "") -> str:
+    """Return a safe action string, falling back to INSUFFICIENT_DATA for bad data.
+
+    Hardens against None, empty string, non-string, or unexpected values
+    in the classification JSON. Logs a warning for every fallback so the
+    operator can spot bad classifier output.
+    """
+    if isinstance(action_value, str) and action_value.strip():
+        return action_value.strip()
+    logger.warning(
+        "invalid_classification_action | context=%s | value=%r",
+        context,
+        action_value,
+    )
+    # None, empty, blank, or non-string → safe fallback
+    return "INSUFFICIENT_DATA"
+
+
 def _load_classifications() -> dict[str, Any]:
-    """Load the classifications JSON, respecting the cache TTL."""
+    """Load the classifications JSON, respecting the cache TTL.
+
+    Hardened: returns empty dict on file errors or JSON parse failures
+    instead of propagating exceptions. Logs the failure for visibility.
+    """
     global _cached_data, _cache_load_time
     now = time.monotonic()
     if _cached_data is not None and (now - _cache_load_time) < _CACHE_TTL_SECONDS:
         return _cached_data
     if not _CLASSIFICATIONS_PATH.exists():
         return {}
-    _cached_data = json.loads(_CLASSIFICATIONS_PATH.read_text())
+    try:
+        _cached_data = json.loads(_CLASSIFICATIONS_PATH.read_text())
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        logger.warning(
+            "classification_load_failed: %s",
+            _CLASSIFICATIONS_PATH,
+            exc_info=True,
+        )
+        _cached_data = {}
     _cache_load_time = now
     return _cached_data
 
@@ -262,7 +295,10 @@ def get_category_action(
         if category and category in entry.get("categories", {}):
             cat_entry = entry["categories"][category]
             return {
-                "action": cat_entry.get("action", "INSUFFICIENT_DATA"),
+                "action": _sanitize_action(
+                    cat_entry.get("action"),  # None if key missing → logged by sanitizer
+                    f"category={category},whale={whale_name}",
+                ),
                 "action_confidence": cat_entry.get("action_confidence", 0.3),
                 "source": "category_specific",
                 "stats": {
@@ -277,7 +313,10 @@ def get_category_action(
         global_data = entry.get("global", {})
         if global_data:
             result = {
-                "action": global_data.get("global_action", "INSUFFICIENT_DATA"),
+                "action": _sanitize_action(
+                    global_data.get("global_action"),  # None if key missing → logged by sanitizer
+                    f"global,whale={whale_name}",
+                ),
                 "action_confidence": global_data.get("global_action_confidence", 0.3),
                 "source": "global_fallback",
                 "stats": {
