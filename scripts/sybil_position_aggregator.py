@@ -12,6 +12,7 @@ import os
 import re
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import ssl
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from datetime import datetime, timezone
@@ -34,7 +35,7 @@ DATA_API_BASE = config.api.data_api_base
 
 # Paths for entity cluster integration
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TRADES_DB = os.path.join(BASE_DIR, "research", "trades.db")
+TRADES_DB = os.path.join(BASE_DIR, "data", "trades.db")
 ENTITY_CLUSTERS_PATH = os.path.join(BASE_DIR, "research", config.paths.entity_clusters_file)
 
 
@@ -146,12 +147,21 @@ def is_active_position(pos: dict) -> bool:
     return True
 
 
+# Known bad addresses that consistently return HTTP 400 — log at DEBUG
+_KNOWN_BAD_ADDRESSES: set[str] = set()
+
+
 def fetch_positions(address: str, timeout: int = 15) -> list[dict]:
     """Fetch open positions for a wallet address from Polymarket API."""
-    if not address.startswith("0x") or len(address) < 40:
+    # Strip compound suffix (e.g. "0x...-1766317541188" → "0x...")
+    clean = address.split("-")[0] if "-" in address else address
+    if not clean.startswith("0x") or len(clean) < 40:
         logger.warning(f"Invalid address format, skipping: {address}")
         return []
-    url = f"{DATA_API_BASE}/positions?user={address}"
+    if clean in _KNOWN_BAD_ADDRESSES:
+        logger.debug(f"Skipping known-bad address (cached): {clean}")
+        return []
+    url = f"{DATA_API_BASE}/positions?user={clean}"
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
         resp = urlopen(req, timeout=timeout)
@@ -159,8 +169,20 @@ def fetch_positions(address: str, timeout: int = 15) -> list[dict]:
         if isinstance(data, list):
             return data
         return []
+    except HTTPError as e:
+        if e.code == 400:
+            _KNOWN_BAD_ADDRESSES.add(clean)
+            logger.debug(f"Known-bad address (HTTP 400), suppressing: {clean}")
+        elif e.code == 429:
+            logger.warning(f"Rate limited, backing off: {clean} ({e})")
+        else:
+            logger.warning(f"HTTP {e.code} fetching positions for {clean}: {e}")
+        return []
+    except (URLError, OSError, ssl.SSLError) as e:
+        logger.debug(f"Transient network error for {clean}: {e}")
+        return []
     except Exception as e:
-        logger.warning(f"Failed to fetch positions for {address}: {e}")
+        logger.warning(f"Failed to fetch positions for {clean}: {e}")
         return []
 
 
