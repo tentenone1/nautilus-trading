@@ -103,10 +103,11 @@ def main() -> int:
     try:
         result = mark_all_unresolved(args.db_path, limit=args.limit)
         log.info(
-            "MTM complete | total=%d updated=%d missing_price=%d stale_mark=%d unpriceable_token=%d unpriceable_data=%d resolved=%d errors=%d",
+            "MTM complete | total=%d updated=%d missing_price=%d no_orderbook_or_illiquid=%d stale_mark=%d unpriceable_token=%d unpriceable_data=%d resolved=%d errors=%d",
             result["total"],
             result["updated"],
             result["missing_price"],
+            result.get("no_orderbook_or_illiquid", 0),
             result["stale_mark"],
             result["unpriceable_missing_token"],
             result["unpriceable_no_market"],

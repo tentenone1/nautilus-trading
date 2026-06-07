@@ -385,7 +385,7 @@ def generate_report(db_path: str = DEFAULT_DB, update_log_path: str = DEFAULT_UP
             SELECT id, shadow_trade_id, whale_name, market_title, price_status
             FROM paper_positions
             WHERE resolved = 0
-              AND price_status IN ('missing_outcome_token', 'missing_price')
+              AND price_status IN ('missing_outcome_token', 'missing_price', 'no_orderbook_or_illiquid')
               AND price_status != 'legacy_unpriceable_missing_token'
             ORDER BY id DESC
             LIMIT 50
@@ -400,6 +400,7 @@ def generate_report(db_path: str = DEFAULT_DB, update_log_path: str = DEFAULT_UP
               AND price_status != 'missing_outcome_token'
               AND price_status != 'unpriceable_missing_outcome_token'
               AND price_status != 'legacy_unpriceable_missing_token'
+              AND price_status != 'no_orderbook_or_illiquid'
               AND last_price_timestamp IS NOT NULL
               AND datetime(last_price_timestamp) < datetime(?)
             ORDER BY id DESC

@@ -25,6 +25,9 @@ class _FakeResponse:
     def read(self):
         return self.data
 
+    def close(self):
+        pass
+
 
 def _make_db() -> str:
     import tempfile
@@ -130,6 +133,173 @@ def test_fetch_current_price_uses_complement_trade_when_token_book_is_gone(monke
 
     assert status == "ok"
     assert price == 0.001
+
+
+def test_fetch_current_price_explicit_no_orderbook_overrides_transient_error(monkeypatch) -> None:
+    """CLOB 404 with 'No orderbook exists' body should classify as structural
+    no_orderbook_or_illiquid even if data-api later times out."""
+    class _FakeErrorResponse:
+        def __init__(self, body: bytes):
+            self._body = body
+        def read(self):
+            return self._body
+        def close(self):
+            pass
+
+    def fake_urlopen(req, timeout=15):
+        url = req.full_url
+        if "/midpoint" in url:
+            raise urllib.error.HTTPError(url, 404, "not found", None, _FakeErrorResponse(b'{"error":"No orderbook exists"}'))
+        if "/book" in url:
+            raise urllib.error.HTTPError(url, 404, "not found", None, _FakeErrorResponse(b'{"error":"No orderbook exists"}'))
+        if "data-api.polymarket.com/trades" in url:
+            raise urllib.error.HTTPError(url, 504, "gateway timeout", None, None)
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr(pp.urllib.request, "urlopen", fake_urlopen)
+
+    price, status, source = pp.fetch_current_price("tokExplicitNoBook", "0xcond")
+
+    assert status == "no_orderbook_or_illiquid"
+    assert source == "no_orderbook_or_illiquid"
+    assert price is None
+
+
+def test_fetch_current_price_5xx_without_no_orderbook_signal_is_api_error(monkeypatch) -> None:
+    """CLOB 502/503 without explicit no-orderbook body must stay api_error."""
+    class _FakeErrorResponse:
+        def __init__(self, body: bytes):
+            self._body = body
+        def read(self):
+            return self._body
+        def close(self):
+            pass
+
+    def fake_urlopen(req, timeout=15):
+        url = req.full_url
+        if "/midpoint" in url:
+            raise urllib.error.HTTPError(url, 502, "bad gateway", None, _FakeErrorResponse(b'{"error":"internal server error"}'))
+        if "/book" in url:
+            raise urllib.error.HTTPError(url, 503, "service unavailable", None, _FakeErrorResponse(b'{"error":"upstream unavailable"}'))
+        if "data-api.polymarket.com/trades" in url:
+            raise urllib.error.HTTPError(url, 500, "internal error", None, None)
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr(pp.urllib.request, "urlopen", fake_urlopen)
+
+    price, status, source = pp.fetch_current_price("tok5xx", "0xcond")
+
+    assert status == "api_error"
+    assert source == "api_error"
+    assert price is None
+
+
+def test_fetch_current_price_data_api_fallback_succeeds_when_clob_has_no_orderbook(monkeypatch) -> None:
+    """CLOB no-orderbook signal + successful data-api exact trade should return ok."""
+    class _FakeErrorResponse:
+        def __init__(self, body: bytes):
+            self._body = body
+        def read(self):
+            return self._body
+        def close(self):
+            pass
+
+    def fake_urlopen(req, timeout=15):
+        url = req.full_url
+        if "/midpoint" in url:
+            raise urllib.error.HTTPError(url, 404, "not found", None, _FakeErrorResponse(b'{"error":"No orderbook exists"}'))
+        if "/book" in url:
+            raise urllib.error.HTTPError(url, 404, "not found", None, _FakeErrorResponse(b'{"error":"No orderbook exists"}'))
+        if "data-api.polymarket.com/trades" in url:
+            return _FakeResponse('[{"asset":"tokExact","price":0.72,"timestamp":100}]')
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr(pp.urllib.request, "urlopen", fake_urlopen)
+
+    price, status, source = pp.fetch_current_price("tokExact", "0xcond")
+
+    assert status == "ok"
+    assert price == 0.72
+    assert source == "data_api_last_trade"
+
+
+def test_fetch_current_price_api_error_for_transient_exception(monkeypatch) -> None:
+    """Valid token with transient API exception (5xx / network) remains api_error."""
+    def fake_urlopen(req, timeout=15):
+        url = req.full_url
+        if "/midpoint" in url:
+            raise urllib.error.HTTPError(url, 502, "bad gateway", None, None)
+        if "/book" in url:
+            raise urllib.error.HTTPError(url, 503, "service unavailable", None, None)
+        if "data-api.polymarket.com/trades" in url:
+            raise urllib.error.HTTPError(url, 504, "gateway timeout", None, None)
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr(pp.urllib.request, "urlopen", fake_urlopen)
+
+    price, status, source = pp.fetch_current_price("tokTransient", "0xcond")
+
+    assert status == "api_error"
+    assert source == "api_error"
+    assert price is None
+
+
+def test_fetch_current_price_no_orderbook_for_all_missing_price(monkeypatch) -> None:
+    """Valid token with 404/empty orderbook on all sources becomes no_orderbook_or_illiquid."""
+    def fake_urlopen(req, timeout=15):
+        url = req.full_url
+        if "/midpoint" in url:
+            raise urllib.error.HTTPError(url, 404, "not found", None, None)
+        if "/book" in url:
+            return _FakeResponse('{}')
+        if "data-api.polymarket.com/trades" in url:
+            return _FakeResponse('[]')
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr(pp.urllib.request, "urlopen", fake_urlopen)
+
+    price, status, source = pp.fetch_current_price("tokNoBook", "0xcond")
+
+    assert status == "no_orderbook_or_illiquid"
+    assert source == "no_orderbook_or_illiquid"
+    assert price is None
+
+
+def test_later_successful_mark_clears_no_orderbook_status(monkeypatch) -> None:
+    """A token marked no_orderbook should return to ok when pricing later succeeds."""
+    db = _make_db()
+    _setup_tables(db)
+    conn = sqlite3.connect(db)
+    conn.execute("""
+        INSERT INTO paper_positions
+        (id, experiment_tag, resolved, shadow_trade_id, snapshot_id, condition_id,
+         outcome_token, price_status, price_source, last_price_timestamp,
+         entry_price, simulated_size, side)
+        VALUES
+        (1, 'v6.6-paper-portfolio', 0, 1, 1, '0xcond',
+         'tokFlip', 'no_orderbook_or_illiquid', 'no_orderbook_or_illiquid', '2026-06-01T00:00:00Z',
+         0.50, 10.0, 'buy')
+    """)
+    conn.commit()
+    conn.close()
+
+    def fake_urlopen(req, timeout=15):
+        url = req.full_url
+        if "/midpoint" in url:
+            return _FakeResponse('{"midpoint":0.60}')
+        raise AssertionError(f"unexpected URL {url}")
+
+    monkeypatch.setattr(pp.urllib.request, "urlopen", fake_urlopen)
+
+    result = pp.mark_to_market_position(1, db)
+    assert result["price_status"] == "ok"
+    assert result["updated"] is True
+
+    conn = sqlite3.connect(db)
+    row = conn.execute("SELECT price_status, current_price FROM paper_positions WHERE id=1").fetchone()
+    conn.close()
+    assert row[0] == "ok"
+    assert row[1] == 0.60
 
 
 def test_shadow_mode_constant_is_true() -> None:

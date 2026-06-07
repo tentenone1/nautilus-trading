@@ -183,3 +183,55 @@ def test_mtm_coverage_counts_only_rows_with_actual_marks(monkeypatch, capsys):
     finally:
         if os.path.exists(db_path):
             os.unlink(db_path)
+
+
+def test_mtm_coverage_excludes_no_orderbook_from_marked(monkeypatch, capsys):
+    """no_orderbook_or_illiquid rows must NOT count as marked operational positions
+    even if they carry a stale current_price and last_price_timestamp."""
+    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp_db:
+        db_path = tmp_db.name
+
+    try:
+        ensure_paper_portfolio_tables(db_path)
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE trades (id INTEGER PRIMARY KEY)")
+        conn.execute("""
+            INSERT INTO paper_positions
+            (id, experiment_tag, resolved, shadow_trade_id, snapshot_id, condition_id,
+             outcome_token, current_price, price_status, price_source, last_price_timestamp,
+             market_title, whale_name, simulated_size, unrealized_pnl, realized_pnl)
+            VALUES
+            (1, 'v6.6-paper-portfolio', 0, 1, 1, 'condition_ok',
+             '0xok', 0.55, 'ok', 'clob_midpoint', '2026-06-05T10:00:00Z',
+             'OK Market', 'whale_ok', 10.0, 1.0, 0.0),
+            (2, 'v6.6-paper-portfolio', 0, 2, 2, 'condition_noob',
+             '0xnoob', 0.60, 'no_orderbook_or_illiquid', 'no_orderbook_or_illiquid', '2026-06-05T10:00:00Z',
+             'NoBook Market', 'whale_noob', 10.0, 0.0, 0.0),
+            (3, 'v6.6-paper-portfolio', 0, 3, 3, 'condition_legacy',
+             '', NULL, 'legacy_unpriceable_missing_token', 'none', NULL,
+             '', 'legacy_whale', 10.0, 0.0, 0.0)
+        """)
+        conn.commit()
+        conn.close()
+
+        monkeypatch.setattr(sys, "argv", ["report_v66_mtm_coverage.py", "--db-path", db_path])
+
+        assert mtm_coverage_main() == 0
+        output = capsys.readouterr().out
+        # Operational should be 2 (ok + no_orderbook, excluding legacy)
+        assert "Operational positions:           2" in output
+        # Tokenized should be 2 (both have outcome_token)
+        assert "Tokenized operational positions: 2 (100.0%)" in output
+        # Marked should be 1 — the no_orderbook row is excluded despite having current_price
+        assert "Marked operational positions:    1 (50.0%)" in output
+        # OK count
+        assert "OK price positions:              1 (50.0% of operational)" in output
+        # no_orderbook reported separately
+        assert "No orderbook / illiquid rows:    1" in output
+        # Stale must exclude no_orderbook; the ok row is >30 min old so stale=1
+        assert "Stale tokenized rows (>30 min):  1" in output
+        assert "Live trades count:               0" in output
+
+    finally:
+        if os.path.exists(db_path):
+            os.unlink(db_path)

@@ -380,7 +380,14 @@ def create_paper_position_from_snapshot(snapshot_id: int, db_path: str) -> int |
 
 
 def _request_json(url: str, timeout: int = 15) -> tuple[Any | None, str]:
-    """Return JSON payload plus status for a best-effort market-data request."""
+    """Return JSON payload plus status for a best-effort market-data request.
+
+    Statuses returned:
+      - "ok"           : valid JSON response
+      - "missing_price": 404 or empty/invalid body without no-orderbook signal
+      - "no_orderbook_or_illiquid": 404 body explicitly says "No orderbook exists"
+      - "api_error"    : 5xx / network / SSL / timeout / unexpected parser errors
+    """
     try:
         req = urllib.request.Request(
             url,
@@ -389,7 +396,15 @@ def _request_json(url: str, timeout: int = 15) -> tuple[Any | None, str]:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read()), "ok"
     except urllib.error.HTTPError as exc:
+        body = b""
+        try:
+            body = exc.read() or b""
+        except Exception:
+            pass
+        text = body.decode("utf-8", errors="replace").lower()
         if exc.code == 404:
+            if "no orderbook exists" in text:
+                return None, "no_orderbook_or_illiquid"
             return None, "missing_price"
         return None, "api_error"
     except ssl.SSLError:
@@ -412,7 +427,8 @@ def _coerce_price(value: Any) -> float | None:
 
 def _price_from_midpoint(outcome_token: str) -> tuple[float | None, str, str]:
     data, status = _request_json(_CLOB_MIDPOINT_URL.format(outcome_token))
-    if status != "ok":
+    if status not in ("ok", "missing_price"):
+        # "no_orderbook_or_illiquid" and "api_error" pass through as-is
         return None, status, "clob_midpoint"
     if not isinstance(data, dict):
         return None, "missing_price", "clob_midpoint"
@@ -424,7 +440,7 @@ def _price_from_midpoint(outcome_token: str) -> tuple[float | None, str, str]:
 
 def _price_from_book(outcome_token: str) -> tuple[float | None, str, str]:
     data, status = _request_json(_CLOB_BOOK_URL.format(outcome_token))
-    if status != "ok":
+    if status not in ("ok", "missing_price"):
         return None, status, "clob_book"
     if not isinstance(data, dict):
         return None, "missing_price", "clob_book"
@@ -486,7 +502,7 @@ def fetch_current_price(outcome_token: str, condition_id: str | None = None) -> 
     """Fetch a paper MTM price for a token.
 
     Returns (price, status, source) where status is one of:
-      ok, missing_outcome_token, missing_price, api_error
+      ok, missing_outcome_token, missing_price, api_error, no_orderbook_or_illiquid
     and source is the price source used.
     """
     if not outcome_token:
@@ -503,8 +519,21 @@ def fetch_current_price(outcome_token: str, condition_id: str | None = None) -> 
         if status == "ok" and price is not None:
             return price, "ok", source
 
+    # Decision order (highest-signal first):
+    # 1. If any source returned an explicit "no_orderbook_or_illiquid" signal,
+    #    classify structurally — even if another source had a transient error.
+    if "no_orderbook_or_illiquid" in statuses:
+        return None, "no_orderbook_or_illiquid", "no_orderbook_or_illiquid"
+
+    # 2. If any source returned a true transient/network/API error, keep that.
     if "api_error" in statuses:
         return None, "api_error", "api_error"
+
+    # 3. All sources returned missing_price (empty/404 without no-orderbook body).
+    #    Treat as no_orderbook_or_illiquid for consistent classification.
+    if all(s == "missing_price" for s in statuses):
+        return None, "no_orderbook_or_illiquid", "no_orderbook_or_illiquid"
+
     return None, "missing_price", "missing_price"
 
 
@@ -558,6 +587,15 @@ def mark_to_market_position(position_id: int, db_path: str) -> dict[str, Any]:
         current_price, price_status, price_source = fetch_current_price(outcome_token, condition_id)
 
         if price_status != "ok" or current_price is None:
+            # Preserve prior status for known structural illiquidity so we don't flip
+            # between api_error and no_orderbook across runs.
+            prior_status = conn.execute(
+                "SELECT price_status FROM paper_positions WHERE id = ?",
+                (position_id,),
+            ).fetchone()
+            if prior_status and prior_status[0] == "no_orderbook_or_illiquid":
+                price_status = "no_orderbook_or_illiquid"
+                price_source = "no_orderbook_or_illiquid"
             conn.execute(
                 "UPDATE paper_positions SET price_status = ?, price_source = ?, last_price_timestamp = ? WHERE id = ?",
                 (price_status, price_source, _now_iso(), position_id),
@@ -721,6 +759,7 @@ def mark_all_unresolved(db_path: str, limit: int | None = None) -> dict[str, Any
 
     updated = 0
     missing_price = 0
+    no_orderbook = 0
     stale = 0
     resolved_skipped = 0
     errors = 0
@@ -733,6 +772,8 @@ def mark_all_unresolved(db_path: str, limit: int | None = None) -> dict[str, Any
             updated += 1
         elif status == "missing_price":
             missing_price += 1
+        elif status == "no_orderbook_or_illiquid":
+            no_orderbook += 1
         elif status == "resolved":
             resolved_skipped += 1
         elif status in ("api_error", "error"):
@@ -750,6 +791,7 @@ def mark_all_unresolved(db_path: str, limit: int | None = None) -> dict[str, Any
             WHERE resolved = 0
               AND outcome_token IS NOT NULL AND outcome_token != ''
               AND last_price_timestamp IS NOT NULL
+              AND price_status NOT IN ('legacy_unpriceable_missing_token', 'no_orderbook_or_illiquid')
               AND datetime(last_price_timestamp) < datetime(?)
             """,
             ((now - __import__("datetime").timedelta(minutes=30)).isoformat(),),
@@ -761,7 +803,7 @@ def mark_all_unresolved(db_path: str, limit: int | None = None) -> dict[str, Any
             "SELECT COUNT(*) FROM paper_positions WHERE resolved=0 AND price_status = 'legacy_unpriceable_missing_token'"
         ).fetchone()[0] or 0
         unpriceable_no_market = conn2.execute(
-            "SELECT COUNT(*) FROM paper_positions WHERE resolved=0 AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status IN ('missing_price','api_error')"
+            "SELECT COUNT(*) FROM paper_positions WHERE resolved=0 AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status IN ('missing_price','api_error','no_orderbook_or_illiquid')"
         ).fetchone()[0] or 0
     except Exception:
         stale_mark = 0
@@ -773,6 +815,7 @@ def mark_all_unresolved(db_path: str, limit: int | None = None) -> dict[str, Any
     return {
         "updated": updated,
         "missing_price": missing_price,
+        "no_orderbook_or_illiquid": no_orderbook,
         "stale": stale_mark,
         "stale_mark": stale_mark,
         "unpriceable_missing_token": unpriceable_missing_token,

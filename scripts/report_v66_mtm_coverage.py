@@ -54,7 +54,7 @@ def main() -> int:
     operational_count = total - legacy_count
     operational_tokenized = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status!='legacy_unpriceable_missing_token'").fetchone()[0] if has_pp else 0
     # Actually count marked positions (have price data) rather than assuming all tokenized are marked
-    operational_marked = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status!='legacy_unpriceable_missing_token' AND current_price IS NOT NULL AND last_price_timestamp IS NOT NULL").fetchone()[0] if has_pp else 0
+    operational_marked = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status NOT IN ('legacy_unpriceable_missing_token','no_orderbook_or_illiquid') AND current_price IS NOT NULL AND last_price_timestamp IS NOT NULL").fetchone()[0] if has_pp else 0
     
     ok_count = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND price_status='ok'").fetchone()[0] if has_pp else 0
     operational_ok_count = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND price_status='ok' AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status!='legacy_unpriceable_missing_token'").fetchone()[0] if has_pp else 0
@@ -68,6 +68,7 @@ def main() -> int:
     # Unpriceable categories
     missing_token = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND (outcome_token IS NULL OR outcome_token='') AND price_status!='legacy_unpriceable_missing_token'").fetchone()[0] if has_pp else 0
     api_errors = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND price_status='api_error'").fetchone()[0] if has_pp else 0
+    no_orderbook = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND price_status='no_orderbook_or_illiquid'").fetchone()[0] if has_pp else 0
     no_price = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND price_status='missing_price'").fetchone()[0] if has_pp else 0
 
     # Stale tokenized rows (>30 min since last mark) - exclude legacy rows
@@ -76,7 +77,7 @@ def main() -> int:
         from datetime import datetime, timezone, timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
         stale_tokenized = conn.execute(
-            "SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND resolved=0 AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status!='legacy_unpriceable_missing_token' AND last_price_timestamp IS NOT NULL AND datetime(last_price_timestamp) < datetime(?)",
+            "SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND resolved=0 AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status NOT IN ('legacy_unpriceable_missing_token','no_orderbook_or_illiquid') AND last_price_timestamp IS NOT NULL AND datetime(last_price_timestamp) < datetime(?)",
             (cutoff,),
         ).fetchone()[0]
 
@@ -101,6 +102,7 @@ def main() -> int:
     print()
     print(f"Missing token rows:              {missing_token}")
     print(f"API error rows:                  {api_errors}")
+    print(f"No orderbook / illiquid rows:    {no_orderbook}")
     print(f"No market data rows:             {no_price}")
     print(f"Stale tokenized rows (>30 min):  {stale_tokenized}")
     print()
