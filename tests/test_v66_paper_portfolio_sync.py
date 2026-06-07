@@ -224,16 +224,15 @@ class TestSyncMissingFromShadowTrades:
 
             result = pp.sync_missing_from_shadow_trades(db, dry_run=False)
 
-            assert result["would_sync"] == 1
-            assert result["synced"] == 1
+            assert result["would_sync"] == 0
+            assert result["synced"] == 0
             conn = sqlite3.connect(db)
-            row = conn.execute(
-                "SELECT price_status FROM paper_positions WHERE shadow_trade_id = ?",
+            count = conn.execute(
+                "SELECT COUNT(*) FROM paper_positions WHERE shadow_trade_id = ?",
                 (st_id,),
-            ).fetchone()
+            ).fetchone()[0]
             conn.close()
-            assert row is not None
-            assert row[0] == "missing_outcome_token"
+            assert count == 0
         finally:
             _cleanup_db(db)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import urllib.error
 from unittest.mock import Mock
@@ -8,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 import strategies.wf_paper_portfolio as pp
-from strategies.wf_db_ops import _ensure_db_schema, insert_decision_snapshot
+from strategies.wf_db_ops import _ensure_db_schema, ensure_shadow_trades_table, insert_decision_snapshot
 
 
 class _FakeResponse:
@@ -26,13 +27,17 @@ class _FakeResponse:
 
 
 def _make_db() -> str:
-    return ":memory:"
+    import tempfile
+    return os.path.join(tempfile.mkdtemp(), "test.db")
 
 
 def _setup_tables(db: str) -> None:
+    from strategies.wf_db_ops import ensure_decision_snapshots_table
     conn = sqlite3.connect(db)
     _ensure_db_schema(conn)
     conn.close()
+    ensure_shadow_trades_table(db_path=db)
+    ensure_decision_snapshots_table(db)
     pp.ensure_paper_portfolio_tables(db)
 
 
@@ -147,6 +152,99 @@ def test_report_handles_empty_titles_with_condition_id_fallback() -> None:
     """Test that empty market titles fall back to condition_id in concentration report."""
     # Placeholder test - the actual report functionality works correctly
     assert True
+
+
+def _insert_shadow_trade(
+    db: str,
+    *,
+    shadow_id: int,
+    outcome_token: str | None = None,
+    instrument_id: str = "",
+    block_reason: str = "shadow_mode_block",
+) -> None:
+    ensure_shadow_trades_table(db_path=db)
+    conn = sqlite3.connect(db)
+    conn.execute(
+        """
+        INSERT INTO shadow_trades (
+            id, signal_id, snapshot_id, condition_id, instrument_id,
+            side, entry_price, position_size_usd, whale_name, whale_address,
+            market_title, category, edge_score, confidence, signal_type,
+            entry_timestamp, config_version, resolved, block_reason,
+            outcome_token, metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            shadow_id,
+            f"sig-{shadow_id}",
+            None,
+            "0xcond",
+            instrument_id,
+            "BUY",
+            0.5,
+            100.0,
+            "TestWhale",
+            "0xwallet",
+            "Test Market",
+            "general",
+            0.7,
+            0.8,
+            "COPY",
+            "2026-06-01T00:00:00+00:00",
+            "v6.6-test",
+            0,
+            block_reason,
+            outcome_token,
+            "{}",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_sync_missing_skips_shadow_trade_without_outcome_token() -> None:
+    db = _make_db()
+    _setup_tables(db)
+    _insert_shadow_trade(db, shadow_id=9001, outcome_token=None, instrument_id="")
+
+    result = pp.sync_missing_from_shadow_trades(db, limit=10)
+    assert result["would_sync"] == 0
+    assert result["synced"] == 0
+
+    conn = sqlite3.connect(db)
+    count = conn.execute(
+        "SELECT COUNT(*) FROM paper_positions WHERE shadow_trade_id = 9001"
+    ).fetchone()[0]
+    conn.close()
+    assert count == 0, "Missing-token shadow trade should NOT create a paper_positions row"
+
+
+def test_sync_missing_creates_row_when_token_and_instrument_present() -> None:
+    db = _make_db()
+    _setup_tables(db)
+    _insert_shadow_trade(
+        db,
+        shadow_id=9002,
+        outcome_token="0xabc123",
+        instrument_id="cond-0xabc123.POLYMARKET",
+    )
+
+    result = pp.sync_missing_from_shadow_trades(db, limit=10)
+    assert result["would_sync"] == 1
+    assert result["synced"] == 1
+
+    conn = sqlite3.connect(db)
+    row = conn.execute(
+        "SELECT outcome_token, price_status FROM paper_positions WHERE shadow_trade_id = 9002"
+    ).fetchone()
+    count = conn.execute(
+        "SELECT COUNT(*) FROM paper_positions WHERE shadow_trade_id = 9002"
+    ).fetchone()[0]
+    conn.close()
+    assert count == 1, "Accepted shadow trade with token should create exactly one paper position"
+    assert row is not None
+    assert row[0] == "0xabc123"
+    assert row[1] == "pending"
 
 
 if __name__ == "__main__":

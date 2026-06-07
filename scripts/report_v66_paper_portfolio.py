@@ -400,7 +400,8 @@ def generate_report(db_path: str = DEFAULT_DB, update_log_path: str = DEFAULT_UP
               AND price_status != 'missing_outcome_token'
               AND price_status != 'unpriceable_missing_outcome_token'
               AND price_status != 'legacy_unpriceable_missing_token'
-              AND (last_price_timestamp IS NULL OR datetime(last_price_timestamp) < datetime(?))
+              AND last_price_timestamp IS NOT NULL
+              AND datetime(last_price_timestamp) < datetime(?)
             ORDER BY id DESC
             LIMIT 50
         """, (stale_cutoff,))

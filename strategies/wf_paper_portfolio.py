@@ -852,6 +852,10 @@ def sync_missing_from_shadow_trades(
                   OR st.block_reason = ''
                   OR st.block_reason = 'shadow_mode_block'
               )
+              AND st.outcome_token IS NOT NULL
+              AND st.outcome_token != ''
+              AND st.instrument_id IS NOT NULL
+              AND st.instrument_id != ''
             ORDER BY st.id ASC
             LIMIT ?
             """,

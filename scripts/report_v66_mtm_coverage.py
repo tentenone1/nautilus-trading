@@ -57,7 +57,7 @@ def main() -> int:
     operational_marked = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status!='legacy_unpriceable_missing_token' AND current_price IS NOT NULL AND last_price_timestamp IS NOT NULL").fetchone()[0] if has_pp else 0
     
     ok_count = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND price_status='ok'").fetchone()[0] if has_pp else 0
-    operational_ok_count = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND price_status='ok' AND outcome_token IS NOT NULL AND outcome_token!=''").fetchone()[0] if has_pp else 0
+    operational_ok_count = conn.execute("SELECT COUNT(*) FROM paper_positions WHERE experiment_tag='v6.6-paper-portfolio' AND price_status='ok' AND outcome_token IS NOT NULL AND outcome_token!='' AND price_status!='legacy_unpriceable_missing_token'").fetchone()[0] if has_pp else 0
 
     # Fallback source counts (exclude legacy rows)
     by_source = {}
