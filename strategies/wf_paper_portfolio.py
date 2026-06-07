@@ -813,3 +813,95 @@ def sync_resolved_from_shadow_trades(db_path: str, limit: int | None = None) -> 
         if resolve_paper_position_from_shadow_trade(shadow_id, db_path):
             resolved_count += 1
     return resolved_count
+
+
+def sync_missing_from_shadow_trades(
+    db_path: str, limit: int | None = None, dry_run: bool = False
+) -> dict[str, Any]:
+    """Find accepted shadow_trades without paper_positions and create them.
+
+    Accepted shadow trades are those with block_reason indicating they passed
+    the pipeline but were blocked by shadow mode (``shadow_mode_block``) or
+    have no block_reason (legacy/empty). Rejected trades (e.g.
+    ``sports_telemetry``, ``sports_quarantine``, ``circuit_breaker``) are
+    skipped so they do not pollute the paper portfolio.
+
+    Args:
+        db_path: Path to the trades database.
+        limit: Max shadow trades to process in this run.
+        dry_run: When True, report what would be synced without writing.
+
+    Returns:
+        Summary dict with keys:
+        - ``would_sync``: number of missing accepted shadow trades found.
+        - ``synced``: number actually created/updated (0 in dry_run).
+        - ``errors``: number of failures during creation.
+        - ``ids``: list of shadow_trade_ids that were found.
+    """
+    ensure_paper_portfolio_tables(db_path)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        rows = conn.execute(
+            """
+            SELECT st.id FROM shadow_trades st
+            LEFT JOIN paper_positions pp ON pp.shadow_trade_id = st.id
+            WHERE pp.id IS NULL
+              AND (
+                  st.block_reason IS NULL
+                  OR st.block_reason = ''
+                  OR st.block_reason = 'shadow_mode_block'
+              )
+            ORDER BY st.id ASC
+            LIMIT ?
+            """,
+            (limit or -1,),
+        ).fetchall()
+    except Exception:
+        conn.close()
+        return {"would_sync": 0, "synced": 0, "errors": 0, "ids": []}
+    conn.close()
+
+    synced = 0
+    errors = 0
+    ids: list[int] = []
+    for (shadow_id,) in rows:
+        ids.append(shadow_id)
+        if dry_run:
+            log.info(
+                "PAPER_PORTFOLIO | dry-run: would sync shadow_trade=%s into paper_positions",
+                shadow_id,
+            )
+            continue
+        try:
+            pos_id = create_or_update_from_shadow_trade(shadow_id, db_path)
+            if pos_id is not None:
+                synced += 1
+            else:
+                errors += 1
+        except Exception as e:
+            log.error(
+                "PAPER_PORTFOLIO | sync_missing failed for shadow_trade %s: %s",
+                shadow_id,
+                e,
+            )
+            errors += 1
+
+    if dry_run:
+        log.info(
+            "PAPER_PORTFOLIO | dry-run: would sync %d missing paper positions from shadow_trades",
+            len(ids),
+        )
+    else:
+        log.info(
+            "PAPER_PORTFOLIO | synced %d missing paper positions from shadow_trades (errors=%d)",
+            synced,
+            errors,
+        )
+
+    return {
+        "would_sync": len(ids),
+        "synced": synced,
+        "errors": errors,
+        "ids": ids,
+    }

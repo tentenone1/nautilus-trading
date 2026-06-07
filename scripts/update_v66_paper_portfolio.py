@@ -24,6 +24,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from strategies.wf_paper_portfolio import (
     mark_all_unresolved,
+    sync_missing_from_shadow_trades,
     sync_resolved_from_shadow_trades,
 )
 
@@ -45,7 +46,6 @@ def main() -> int:
     parser.add_argument("--db-path", default=DEFAULT_DB, help="Path to trades.db")
     args = parser.parse_args()
 
-    # Early return for dry-run mode before any DB mutations or API calls
     if args.dry_run:
         log.info(
             "Dry-run mode | limit=%d | db=%s | with_api=%s",
@@ -53,15 +53,25 @@ def main() -> int:
             args.db_path,
             args.with_api,
         )
+
+        # Report what would be synced without writing
+        try:
+            missing = sync_missing_from_shadow_trades(
+                args.db_path, limit=args.limit, dry_run=True
+            )
+            log.info(
+                "Dry-run | would sync %d missing paper positions from shadow_trades",
+                missing["would_sync"],
+            )
+        except Exception as e:
+            log.warning("Dry-run | missing-shadow sync check failed (non-fatal): %s", e)
+
+        # In dry-run we skip resolved sync and MTM to avoid writes/API calls
         if not args.with_api:
             log.info("Dry-run complete (no writes, no API calls)")
             return 0
-        # If --with-api is set, proceed to read-only dry-run by allowing API
-        # but we still skip writes by not calling the functions below? Actually the
-        # functions below write. To avoid writes we need a different path.
-        # For simplicity, if --with-api is set in dry-run, we just log that we
-        # would have updated and return.
-        log.info("Dry-run with-api: would update up to %d positions", args.limit)
+
+        log.info("Dry-run with-api: would proceed to resolved sync + MTM reads only")
         return 0
 
     log.info("=" * 60)
@@ -72,7 +82,19 @@ def main() -> int:
     )
 
     try:
-        # Sync newly resolved shadow trades first
+        # Sync missing accepted shadow trades into paper_positions first
+        missing = sync_missing_from_shadow_trades(args.db_path, limit=args.limit)
+        log.info(
+            "Synced %d missing paper positions from shadow_trades (would_sync=%d, errors=%d)",
+            missing["synced"],
+            missing["would_sync"],
+            missing["errors"],
+        )
+    except Exception as e:
+        log.warning("Missing-shadow sync failed (non-fatal): %s", e)
+
+    try:
+        # Sync newly resolved shadow trades next
         resolved = sync_resolved_from_shadow_trades(args.db_path, limit=args.limit)
         log.info("Synced %d resolved paper positions from shadow_trades", resolved)
     except Exception as e:
