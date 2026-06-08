@@ -11,10 +11,17 @@ Pipeline:
 State tracking: research/autoresearch_bridge_state.json prevents re-processing.
 from nrs_guardian import enforce_singleton
 enforce_singleton("signal_bridge")
+
+TTL / Expiry Mode (manual CLI):
+--report   : show which recommendation keys would expire, without writing
+--execute  : actually remove expired recommendation keys from state
+--ttl-days : override default TTL (default: 7 days)
 """
 
 from __future__ import annotations
 
+import argparse
+import copy
 import json
 import os
 import sys
@@ -29,6 +36,10 @@ RECS_FILE = os.path.join(BASE_DIR, "research", "trade_recommendations.json")
 QUEUE_FILE = os.path.join(BASE_DIR, "research", "autoresearch_signal_queue.json")
 STATE_FILE = os.path.join(BASE_DIR, "research", "autoresearch_bridge_state.json")
 LOG_FILE = os.path.join(BASE_DIR, "logs", "autoresearch-signal-bridge.log")
+
+DEFAULT_TTL_DAYS = 7
+META_KEYS = frozenset({"last_run", "whales_updated", "snapshot"})
+
 
 def log(msg: str) -> None:
     ts = datetime.now(timezone.utc).isoformat()
@@ -137,6 +148,186 @@ def resolve_yes_token(condition_id: str) -> tuple[str, str, str] | None:
     # Fallback to first token
     t = tokens[0]
     return str(t["token_id"]), t["outcome"], market_category
+
+
+# ── State TTL / Expiry utilities ────────────────────────────────────────────────
+
+
+def _is_meta_key(key: str) -> bool:
+    return key in META_KEYS
+
+
+def _is_recommendation_key(key: str) -> bool:
+    """Return True for keys shaped like condition_id|timestamp."""
+    # Must contain a pipe separator and look like a compound key
+    if "|" not in key:
+        return False
+    # Exclude known metadata keys
+    if _is_meta_key(key):
+        return False
+    # Must start with "0x" hexish condition_id
+    parts = key.split("|", 1)
+    return len(parts) == 2 and parts[0].startswith("0x")
+
+
+def classify_state_keys(state: dict[str, Any]) -> dict[str, list[str]]:
+    """Classify state keys into metadata, recent recommendations, expired recommendations."""
+    meta = []
+    rec_recent = []
+    rec_expired = []
+    for key, val in state.items():
+        if _is_meta_key(key):
+            meta.append(key)
+            continue
+        if isinstance(val, (int, float)) and _is_recommendation_key(key):
+            rec_recent.append(key)
+        else:
+            # Non-numeric or non-recommendation values are kept as metadata
+            meta.append(key)
+    return {
+        "meta": meta,
+        "rec_recent": rec_recent,
+        "rec_expired": rec_expired,
+    }
+
+
+def expire_old_recommendation_keys(state: dict[str, Any], ttl_secs: float) -> tuple[dict[str, Any], int]:
+    """Return a new state dict with expired recommendation keys removed, and count of removed keys.
+
+    Preserves:
+    - metadata keys (last_run, whales_updated, snapshot, etc.)
+    - non-numeric values
+    - recommendation keys with numeric timestamps within TTL
+    """
+    now = time.time()
+    cleaned: dict[str, Any] = {}
+    expired_count = 0
+    for key, val in state.items():
+        if _is_meta_key(key):
+            cleaned[key] = val
+            continue
+        if not isinstance(val, (int, float)):
+            cleaned[key] = val
+            continue
+        if _is_recommendation_key(key):
+            age = now - float(val)
+            if age <= ttl_secs:
+                cleaned[key] = val
+            else:
+                expired_count += 1
+        else:
+            cleaned[key] = val
+    return cleaned, expired_count
+
+
+def report_ttl(state: dict[str, Any], ttl_secs: float, recommendations: list[dict]) -> dict[str, Any]:
+    """Report what would happen with TTL expiry, without mutating state."""
+    now = time.time()
+    total_keys = len(state)
+    meta_keys = [k for k in state if _is_meta_key(k)]
+    meta_keys_count = len(meta_keys)
+
+    rec_total = 0
+    rec_expired = 0
+    rec_retained = 0
+    sample_expired: list[str] = []
+    sample_retained: list[str] = []
+
+    for key, val in state.items():
+        if _is_recommendation_key(key) and isinstance(val, (int, float)):
+            rec_total += 1
+            age = now - float(val)
+            if age > ttl_secs:
+                rec_expired += 1
+                if len(sample_expired) < 3:
+                    sample_expired.append(f"{key[:60]} (age={age/86400:.1f}d)")
+            else:
+                rec_retained += 1
+                if len(sample_retained) < 3:
+                    sample_retained.append(f"{key[:60]} (age={age/86400:.1f}d)")
+
+    # Would-requeue BUYs
+    buy_recs = [r for r in recommendations if r.get("decision") == "BUY" and r.get("confidence", 0) >= CONFIDENCE_GATE]
+    new_recs = []
+    for r in buy_recs:
+        key = make_signal_key(r)
+        if key in state and isinstance(state.get(key), (int, float)):
+            age = now - float(state[key])
+            if age > ttl_secs:
+                new_recs.append(r)
+        else:
+            new_recs.append(r)
+
+    return {
+        "total_keys": total_keys,
+        "meta_keys_count": meta_keys_count,
+        "meta_keys": meta_keys,
+        "rec_total": rec_total,
+        "rec_expired": rec_expired,
+        "rec_retained": rec_retained,
+        "sample_expired": sample_expired,
+        "sample_retained": sample_retained,
+        "buy_total": len(buy_recs),
+        "would_requeue": len(new_recs),
+    }
+
+
+def run_ttl_report(ttl_days: int = DEFAULT_TTL_DAYS) -> int:
+    """Dry-run TTL report. Returns 0."""
+    state = load_state()
+    recommendations: list[dict] = []
+    if os.path.exists(RECS_FILE):
+        try:
+            with open(RECS_FILE) as f:
+                recommendations = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    ttl_secs = ttl_days * 86400
+    report = report_ttl(state, ttl_secs, recommendations)
+    now = datetime.now(timezone.utc).isoformat()
+
+    print(f"== Autoresearch Bridge State TTL Report ({now}) ==")
+    print(f"TTL: {ttl_days} days ({ttl_secs} seconds)")
+    print(f"State file: {STATE_FILE}")
+    print()
+    print(f"Total keys:              {report['total_keys']}")
+    print(f"  Metadata keys:         {report['meta_keys_count']}")
+    for mk in report["meta_keys"]:
+        print(f"    - {mk}")
+    print(f"  Recommendation keys:  {report['rec_total']}")
+    print(f"    Expired:             {report['rec_expired']}")
+    print(f"    Retained:            {report['rec_retained']}")
+    print()
+    if report["sample_expired"]:
+        print("Sample expired keys:")
+        for s in report["sample_expired"]:
+            print(f"    {s}")
+    if report["sample_retained"]:
+        print("Sample retained keys:")
+        for s in report["sample_retained"]:
+            print(f"    {s}")
+    print()
+    print(f"BUY recommendations:     {report['buy_total']}")
+    print(f"Would requeue after TTL: {report['would_requeue']}")
+    print()
+    print("DRY RUN — no state changes written.")
+    print("To execute, pass --execute after review.")
+    return 0
+
+
+def run_ttl_execute(ttl_days: int = DEFAULT_TTL_DAYS) -> int:
+    """Execute TTL expiry on state file. Returns 0."""
+    state = load_state()
+    ttl_secs = ttl_days * 86400
+    cleaned, expired_count = expire_old_recommendation_keys(state, ttl_secs)
+    removed = len(state) - len(cleaned)
+    if removed > 0:
+        save_state(cleaned)
+        log(f"TTL expiry: removed {removed} recommendation keys (TTL={ttl_days} days)")
+    else:
+        log(f"TTL expiry: no recommendation keys expired (TTL={ttl_days} days)")
+    return 0
 
 
 def load_state() -> dict[str, float]:
@@ -314,5 +505,43 @@ def run_loop() -> None:
         time.sleep(INTERVAL_SECS)
 
 
-if __name__ == "__main__":
+def cli(argv: list[str] | None = None) -> int:
+    """Entry point that preserves daemon behavior when called with no args.
+
+    No arguments (or only unrecognized ones via run_loop) -> start daemon loop.
+    --report -> dry-run TTL report.
+    --execute -> TTL expiry with state mutation.
+    """
+    # If no sys.argv provided and no explicit cli flags were passed, keep daemon behavior
+    if argv is None:
+        argv = sys.argv[1:]
+
+    # Detect intent: if --report or --execute is explicitly requested, run TTL mode
+    # Otherwise default to daemon/run_loop to preserve existing systemd/cron behavior
+    if "--report" in argv or "--execute" in argv:
+        parser = argparse.ArgumentParser(description="Autoresearch Signal Bridge TTL Manager")
+        parser.add_argument(
+            "--report", action="store_true",
+            help="Dry-run: report state TTL expiry without writing."
+        )
+        parser.add_argument(
+            "--execute", action="store_true",
+            help="Execute: remove expired recommendation keys from state file."
+        )
+        parser.add_argument(
+            "--ttl-days", type=int, default=DEFAULT_TTL_DAYS,
+            help=f"TTL in days for recommendation keys (default: {DEFAULT_TTL_DAYS})"
+        )
+        args = parser.parse_args(argv)
+
+        if args.execute:
+            return run_ttl_execute(args.ttl_days)
+        return run_ttl_report(args.ttl_days)
+
+    # Default: run the daemon loop (existing behavior)
     run_loop()
+    return 0
+
+
+if __name__ == "__main__":
+    cli()
