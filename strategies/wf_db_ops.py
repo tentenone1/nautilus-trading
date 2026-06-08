@@ -6,6 +6,7 @@ from the trades database. No class coupling — all state is passed as parameter
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import time
@@ -304,6 +305,13 @@ def ensure_shadow_trades_table(db_path: str | None = None) -> None:
             f"CREATE INDEX IF NOT EXISTS idx_st_{idx_col} "
             f"ON shadow_trades({idx_col})"
         )
+
+    # v6.6-integrity-fix: drop stale trigger that rejects entry_price=0.
+    # The trigger was created by an earlier migration and blocks our
+    # integrity gate from inserting uncomputable rows (which we need to
+    # mark so the resolver doesn't fabricate fake $0 PnL).
+    conn.execute("DROP TRIGGER IF EXISTS trg_shadow_trades_entry_price_check")
+
     conn.commit()
     conn.close()
     
@@ -366,23 +374,39 @@ def insert_shadow_trade(
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("BEGIN TRANSACTION")
+
+        # ── Integrity gate: zero entry/size = uncomputable ─────────────────────
+        # Must match wf_shadow_ledger.insert_shadow_trade behavior so that
+        # the resolver does not fabricate $0 PnL for rows missing valid data.
+        _uncomputable_reason: str | None = None
+        if entry_price <= 0 or entry_price >= 1:
+            _uncomputable_reason = "uncomputable_zero_entry"
+        elif position_size_usd <= 0:
+            _uncomputable_reason = "uncomputable_zero_size"
+        _block_reason = _uncomputable_reason or ""
+        _handler_step = "uncomputable" if _uncomputable_reason else ""
+        _metadata_json = json.dumps({"original_block_reason": ""}) if _uncomputable_reason else ""
+
         conn.execute(
             """INSERT INTO shadow_trades (
                 snapshot_id, condition_id, instrument_id, side,
                 entry_price, position_size_usd, whale_name, whale_address,
                 market_title, category, edge_score, confidence, signal_type,
-                entry_timestamp, config_version
+                entry_timestamp, config_version,
+                signal_id, block_reason, handler_step, metadata_json
             ) VALUES (
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
-                ?, ?
+                ?, ?,
+                ?, ?, ?, ?
             )""",
             (
                 snapshot_id, condition_id, instrument_id, side,
                 entry_price, position_size_usd, whale_name, whale_address,
                 market_title, category, edge_score, confidence, signal_type,
                 entry_timestamp, config_version,
+                "", _block_reason, _handler_step, _metadata_json,
             ),
         )
         conn.execute("COMMIT")
@@ -393,8 +417,7 @@ def insert_shadow_trade(
         import logging
         _lg = logging.getLogger('wf_db_ops')
         _lg.error(
-            f"insert_decision_snapshot FAILED | whale={whale_name} | "
-            f"category_action={category_action!r} | category_action_confidence={category_action_confidence} | "
+            f"insert_shadow_trade FAILED | whale={whale_name} | "
             f"error={_e}\n{traceback.format_exc()}"
         )
         if conn:

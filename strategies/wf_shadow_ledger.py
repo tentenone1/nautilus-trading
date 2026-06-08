@@ -136,6 +136,23 @@ def insert_shadow_trade(
     if not instrument_id and outcome_token:
         instrument_id = f"{condition_id}-{outcome_token}.POLYMARKET"
 
+    # ── Integrity gate: zero entry/size = uncomputable ─────────────────────
+    # Tradeable shadow_trades MUST have valid entry_price (0<price<1) and
+    # position_size_usd > 0. If not, the row is telemetry-only and the resolver
+    # must not fabricate $0 PnL.  (v6.6-integrity-fix)
+    _uncomputable_reason: str | None = None
+    if entry_price <= 0 or entry_price >= 1:
+        _uncomputable_reason = "uncomputable_zero_entry"
+    elif position_size_usd <= 0:
+        _uncomputable_reason = "uncomputable_zero_size"
+    if _uncomputable_reason:
+        # Preserve original block_reason in metadata for debugging
+        if block_reason:
+            meta["original_block_reason"] = block_reason
+        block_reason = _uncomputable_reason
+        handler_step = "uncomputable"
+        create_paper_position = False  # No paper position for uncomputable rows
+
     conn = sqlite3.connect(str(db))
     conn.execute("PRAGMA busy_timeout = 5000")
     try:
@@ -371,35 +388,48 @@ def resolve_shadow_trade(shadow_trade_id: int, condition_id: str) -> bool:
         conn.close()
         return False
 
-    # Fetch the shadow trade to get entry price, side, size
+    # Fetch the shadow trade to get entry price, side, size, and computability flag
     db = _get_db_path()
     conn = sqlite3.connect(str(db))
     conn.execute("PRAGMA busy_timeout = 5000")
     row = conn.execute(
-        "SELECT side, entry_price, position_size_usd FROM shadow_trades WHERE id = ?",
+        "SELECT side, entry_price, position_size_usd, block_reason, handler_step FROM shadow_trades WHERE id = ?",
         (shadow_trade_id,),
     ).fetchone()
     if row is None:
         conn.close()
         return False
 
-    side, entry_price, position_size_usd = row
+    side, entry_price, position_size_usd, block_reason, handler_step = row
     conn.close()
 
-    hypothetical_pnl = compute_hypothetical_pnl(side, entry_price, position_size_usd, outcome)
+    # ── Integrity gate: uncomputable rows must not fabricate $0 PnL ──────
+    # Rows marked with block_reason starting "uncomputable_" or handler_step
+    # "uncomputable" were inserted with invalid entry/size.  They are telemetry-
+    # only and must resolve with NULL PnL, not fake $0 wins/losses.
+    is_uncomputable = (
+        (block_reason and block_reason.startswith("uncomputable_"))
+        or handler_step == "uncomputable"
+    )
 
-    # Compute actual_pnl, actual_return, and won alongside hypothetical_pnl
-    # For uncomputable trades (entry_price=0 sports backfills), set pnl=0
-    # so they appear in canonical_perf rather than being silently excluded.
-    if hypothetical_pnl is not None:
-        actual_pnl = round(hypothetical_pnl, 2)
-        actual_return = round(hypothetical_pnl / position_size_usd, 6) if position_size_usd > 0 else 0.0
-        won = 1 if hypothetical_pnl > 0 else 0
+    if is_uncomputable:
+        hypothetical_pnl = None
+        actual_pnl = None
+        actual_return = None
+        won = None
     else:
-        hypothetical_pnl = 0.0
-        actual_pnl = 0.0
-        actual_return = 0.0
-        won = 0
+        hypothetical_pnl = compute_hypothetical_pnl(side, entry_price, position_size_usd, outcome)
+
+        # Compute actual_pnl, actual_return, and won alongside hypothetical_pnl
+        if hypothetical_pnl is not None:
+            actual_pnl = round(hypothetical_pnl, 2)
+            actual_return = round(hypothetical_pnl / position_size_usd, 6) if position_size_usd > 0 else 0.0
+            won = 1 if hypothetical_pnl > 0 else 0
+        else:
+            hypothetical_pnl = 0.0
+            actual_pnl = 0.0
+            actual_return = 0.0
+            won = 0
 
     now = datetime.now(timezone.utc).isoformat()
     conn2 = sqlite3.connect(str(db))
